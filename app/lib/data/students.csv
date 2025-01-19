@@ -1,0 +1,7 @@
+id,name,email,avatar,score,level,average,attendance,submissions,lastSubmission,status,trend,badges,progress,streak,recentAchievement,course,grade
+1012,James Wilson,james.wilson@university.edu,/avatars/1.png,2480,15,95,98%,18/18,2 days ago,Excellent,up,"Top Performer,Perfect Attendance,Quiz Master",85,12,Completed Advanced SQL Challenge,Database Systems,A+
+1011,Isabella Taylor,i.taylor@university.edu,/avatars/2.png,2350,14,88,95%,17/18,1 day ago,Good,stable,"Quick Learner,Team Player,Project Ace",92,8,Best Project Submission,Web Development,A
+1013,Emma Davis,emma.d@university.edu,/avatars/3.png,2200,13,82,92%,16/18,3 days ago,Good,stable,"Consistent Performer,Problem Solver",78,5,Top Quiz Score,Machine Learning,A-
+1014,Michael Brown,m.brown@university.edu,/avatars/4.png,2150,12,72,80%,14/18,1 week ago,At Risk,down,"Rising Star,Fast Learner",88,7,Most Improved Student,Database Systems,B+
+1015,Sophia Martinez,s.martinez@university.edu,/avatars/5.png,2100,12,76,85%,15/18,5 days ago,At Risk,down,"Dedicated Learner",72,4,Consistent Progress,Web Development,B+
+1016,Lisa Wang,l.wang@university.edu,/avatars/6.png,2050,11,78,88%,15/18,4 days ago,Good,stable,"Team Contributor",65,3,Great Team Project,Machine Learning,B 
