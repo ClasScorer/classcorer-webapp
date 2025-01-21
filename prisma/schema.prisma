@@ -1,0 +1,89 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  password      String
+  role          String    @default("professor")
+  department    String?
+  avatar        String?
+  joinDate      DateTime  @default(now())
+  timezone      String?
+  language      String?   @default("English")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  courses       Course[]
+}
+
+model Course {
+  id            String    @id @default(cuid())
+  name          String
+  code          String    @unique
+  description   String?
+  instructor    User      @relation(fields: [instructorId], references: [id])
+  instructorId  String
+  status        String    @default("on-track")
+  week          Int       @default(1)
+  progress      Int       @default(0)
+  credits       Int       @default(3)
+  average       Float     @default(0)
+  attendance    Float     @default(0)
+  passRate      Float     @default(0)
+  classAverage  Float     @default(0)
+  totalStudents Int       @default(0)
+  atRiskCount   Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  students      Student[]
+  events        Event[]
+}
+
+model Student {
+  id                String   @id @default(cuid())
+  name              String
+  email             String   @unique
+  avatar            String?
+  score             Int      @default(0)
+  level             Int      @default(1)
+  average           Float    @default(0)
+  attendance        Float    @default(0)
+  submissions       Int      @default(0)
+  lastSubmission    DateTime?
+  status            String   @default("Good")
+  trend            String   @default("stable")
+  badges           String[]
+  progress         Int      @default(0)
+  streak           Int      @default(0)
+  grade            String   @default("N/A")
+  course           Course   @relation(fields: [courseId], references: [id])
+  courseId         String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  title       String
+  date        DateTime
+  time        String?
+  type        String
+  description String?
+  course      Course?  @relation(fields: [courseId], references: [id])
+  courseId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
