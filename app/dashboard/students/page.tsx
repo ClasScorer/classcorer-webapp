@@ -70,10 +70,7 @@ export default function StudentsPage() {
   // Stats calculations
   const totalStudents = students.length;
   const averageGrade = Math.round(students.reduce((acc, s) => acc + s.average, 0) / totalStudents);
-  const averageAttendance = Math.round(students.reduce((acc, s) => {
-    const attendance = parseInt(s.attendance.replace('%', ''));
-    return acc + attendance;
-  }, 0) / totalStudents);
+  const averageAttendance = Math.round(students.reduce((acc, s) => acc + s.attendance, 0) / totalStudents);
   const activeCourses = new Set(students.map(s => s.courseId)).size;
 
   if (loading) {
@@ -222,8 +219,8 @@ export default function StudentsPage() {
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-sm">
                           <div>
-                            <div className="text-muted-foreground">Instructor</div>
-                            <div className="font-medium">{studentCourse.instructor}</div>
+                            <div className="text-muted-foreground">Week</div>
+                            <div className="font-medium">Week {studentCourse.week}</div>
                           </div>
                           <div>
                             <div className="text-muted-foreground">Progress</div>
@@ -245,15 +242,25 @@ export default function StudentsPage() {
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Attendance</div>
-                    <div className="text-sm font-medium">{student.attendance}</div>
+                    <div className="text-sm font-medium">{student.attendance}%</div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Submissions</div>
                     <div className="text-sm font-medium">{student.submissions}</div>
                   </div>
                   <div>
-                    <div className="text-sm text-muted-foreground">Last Activity</div>
-                    <div className="text-sm font-medium">{student.lastSubmission}</div>
+                    <div className="text-sm text-muted-foreground">Last Submission</div>
+                    <div className="text-sm font-medium">
+                      {student.lastSubmission ? new Date(student.lastSubmission).toLocaleDateString() : 'N/A'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Course</div>
+                    <div className="text-sm font-medium">{student.course?.name || 'N/A'}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Course Code</div>
+                    <div className="text-sm font-medium">{student.course?.code || 'N/A'}</div>
                   </div>
                 </div>
               </div>

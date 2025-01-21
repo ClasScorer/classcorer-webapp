@@ -1,5 +1,11 @@
-"use client"
-
+import { Trophy, Medal, Star, Flame, Target, Zap, Award, Crown, Sparkles, Share2, Settings } from "lucide-react"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import {
   Avatar,
   AvatarFallback,
@@ -7,189 +13,169 @@ import {
 } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { useEffect, useState } from "react"
-import { type Student } from "@/lib/data"
+import { Button } from "@/components/ui/button"
+import { TrendingDown, TrendingUp } from "lucide-react"
+import { loadStudents, type Student } from "@/lib/data"
 
-const ITEMS_PER_PAGE = 5;
+function getInitials(name: string) {
+  return name
+    .split(' ')
+    .map(part => part[0])
+    .join('')
+    .toUpperCase()
+}
 
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case "Excellent":
-      return "bg-green-100 text-green-700"
-    case "Good":
-      return "bg-blue-100 text-blue-700"
-    case "At Risk":
-      return "bg-red-100 text-red-700"
+function getRankBadge(rank: number) {
+  switch (rank) {
+    case 1:
+      return <Trophy className="h-6 w-6 text-yellow-500" />
+    case 2:
+      return <Medal className="h-6 w-6 text-gray-400" />
+    case 3:
+      return <Award className="h-6 w-6 text-amber-600" />
     default:
-      return "bg-gray-100 text-gray-700"
+      return <span className="font-bold text-muted-foreground">#{rank}</span>
   }
 }
 
-const getTrendIcon = (trend: string) => {
-  switch (trend) {
-    case "up":
-      return (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-green-500">
-          <path fillRule="evenodd" d="M12 20.25a.75.75 0 01-.75-.75V6.31l-5.47 5.47a.75.75 0 01-1.06-1.06l6.75-6.75a.75.75 0 011.06 0l6.75 6.75a.75.75 0 11-1.06 1.06l-5.47-5.47V19.5a.75.75 0 01-.75.75z" clipRule="evenodd" />
-        </svg>
-      )
-    case "down":
-      return (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-red-500">
-          <path fillRule="evenodd" d="M12 3.75a.75.75 0 01.75.75v13.19l5.47-5.47a.75.75 0 111.06 1.06l-6.75 6.75a.75.75 0 01-1.06 0l-6.75-6.75a.75.75 0 111.06-1.06l5.47 5.47V4.5a.75.75 0 01.75-.75z" clipRule="evenodd" />
-        </svg>
-      )
-    default:
-      return (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-yellow-500">
-          <path fillRule="evenodd" d="M3.75 12a.75.75 0 01.75-.75h15a.75.75 0 010 1.5h-15a.75.75 0 01-.75-.75z" clipRule="evenodd" />
-        </svg>
-      )
-  }
+function getPerformanceColor(average: number) {
+  if (average >= 90) return "text-green-500"
+  if (average >= 80) return "text-emerald-500"
+  if (average >= 70) return "text-blue-500"
+  if (average >= 60) return "text-amber-500"
+  return "text-red-500"
 }
 
-export function StudentLeaderboard() {
-  const [students, setStudents] = useState<Student[]>([])
-  const [currentPage, setCurrentPage] = useState(1)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    async function fetchStudents() {
-      try {
-        const response = await fetch('/api/students')
-        const data = await response.json()
-        // Sort students by score in descending order
-        const sortedStudents = data.sort((a: Student, b: Student) => b.score - a.score)
-        setStudents(sortedStudents)
-      } catch (error) {
-        console.error('Error loading students:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchStudents()
-  }, [])
-
-  // Calculate pagination
-  const totalPages = Math.ceil(students.length / ITEMS_PER_PAGE)
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
-  const paginatedStudents = students.slice(startIndex, startIndex + ITEMS_PER_PAGE)
-
-  // Calculate student stats
-  const calculateStats = (students: Student[]) => {
-    const totalStudents = students.length;
-    if (totalStudents === 0) return { averageGrade: 0, averageAttendance: 0 };
-
-    const averageGrade = Math.round(
-      students.reduce((sum, student) => sum + student.average, 0) / totalStudents
-    );
-
-    const averageAttendance = Math.round(
-      students.reduce((sum, student) => {
-        const attendance = typeof student.attendance === 'string' 
-          ? parseInt(student.attendance.replace('%', ''))
-          : student.attendance;
-        return sum + attendance;
-      }, 0) / totalStudents
-    );
-
-    return { averageGrade, averageAttendance };
-  };
-
-  const stats = calculateStats(students);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-48">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    )
-  }
+export async function StudentLeaderboard() {
+  const students = await loadStudents()
+  
+  // Sort students by average score and calculate ranks
+  const rankedStudents = students
+    .sort((a, b) => b.average - a.average)
+    .map((student, index) => ({
+      ...student,
+      rank: index + 1
+    }))
 
   return (
-    <div className="space-y-4">
-      {paginatedStudents.map((student) => (
-        <div key={student.id} className="flex flex-col p-4 rounded-lg hover:bg-muted/50 transition-colors">
-          <div className="flex items-center">
-            <Avatar className="h-9 w-9">
-              <AvatarImage src={student.avatar} alt={student.name} />
-              <AvatarFallback>{student.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
-            </Avatar>
-            <div className="ml-4 space-y-1 flex-1">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium leading-none">{student.name}</p>
-                  <p className="text-xs text-muted-foreground">{student.email}</p>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Badge variant="secondary" className={`${getStatusColor(student.status)}`}>
-                    {student.status}
-                  </Badge>
-                  {getTrendIcon(student.trend)}
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="mt-4 grid grid-cols-4 gap-4">
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Average</p>
-              <div className="flex items-center space-x-2">
-                <Progress value={student.average} className="h-2" />
-                <span className="text-sm font-medium">{student.average}%</span>
-              </div>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Attendance</p>
-              <p className="text-sm font-medium">{student.attendance}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Submissions</p>
-              <p className="text-sm font-medium">{student.submissions}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Last Activity</p>
-              <p className="text-sm font-medium">{student.lastSubmission}</p>
-            </div>
-          </div>
-        </div>
-      ))}
-
-      {totalPages > 1 && (
+    <div className="space-y-8">
+      {/* Top 3 Students */}
+      <div className="flex flex-col space-y-6">
         <div className="flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">
-            Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, students.length)} of {students.length} students
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="px-3 py-1 text-sm border rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Previous
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-              <button
-                key={page}
-                onClick={() => setCurrentPage(page)}
-                className={`px-3 py-1 text-sm rounded ${
-                  currentPage === page
-                    ? 'bg-primary text-primary-foreground'
-                    : 'hover:bg-muted'
-                }`}
-              >
-                {page}
-              </button>
-            ))}
-            <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="px-3 py-1 text-sm border rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next
-            </button>
+          <div>
+            <h2 className="text-2xl font-bold">Top Performers</h2>
+            <p className="text-muted-foreground">Leading students across all courses</p>
           </div>
         </div>
-      )}
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {rankedStudents.slice(0, 3).map((student) => (
+            <Card key={student.id} className={`relative overflow-hidden transition-all duration-200 hover:shadow-lg ${student.rank === 1 ? 'bg-gradient-to-br from-yellow-50 to-white border-yellow-200' : ''}`}>
+              <div className="absolute right-4 top-4">
+                {getRankBadge(student.rank)}
+              </div>
+              <CardHeader>
+                <div className="flex items-center gap-4">
+                  <Avatar className="h-16 w-16 border-2 border-muted">
+                    <AvatarImage src={student.avatar} alt={student.name} />
+                    <AvatarFallback className="text-lg">{getInitials(student.name)}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <CardTitle className="text-xl">{student.name}</CardTitle>
+                    <CardDescription className="text-sm mt-1">
+                      {student.level}
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-sm font-medium">Average Score</div>
+                      <div className={`text-xl font-bold ${getPerformanceColor(student.average)}`}>
+                        {student.average}%
+                      </div>
+                    </div>
+                    <Progress value={student.average} className="h-2" />
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="text-sm font-medium text-muted-foreground">Attendance</div>
+                      <div className="text-xl font-bold">{student.attendance}%</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-medium text-muted-foreground">Streak</div>
+                      <div className="text-xl font-bold">{student.streak} days</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 pt-2">
+                    <Badge variant={student.trend === 'up' ? 'default' : 'destructive'} className="rounded-full">
+                      {student.trend === 'up' ? (
+                        <TrendingUp className="h-3 w-3 mr-1" />
+                      ) : (
+                        <TrendingDown className="h-3 w-3 mr-1" />
+                      )}
+                      {student.trend === 'up' ? 'Improving' : 'Needs Help'}
+                    </Badge>
+                    <Badge variant="secondary" className="rounded-full">
+                      <Star className="h-3 w-3 mr-1" />
+                      {student.badges} badges
+                    </Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Rest of the Students */}
+      <Card>
+        <CardHeader className="border-b">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Leaderboard</CardTitle>
+              <CardDescription>All students ranked by performance</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="divide-y">
+            {rankedStudents.slice(3).map((student) => (
+              <div key={student.id} className="flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors">
+                <div className="w-8 text-center">
+                  <span className="font-bold text-muted-foreground">#{student.rank}</span>
+                </div>
+                <Avatar className="h-10 w-10 border border-muted">
+                  <AvatarImage src={student.avatar} alt={student.name} />
+                  <AvatarFallback>{getInitials(student.name)}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <div className="font-medium">{student.name}</div>
+                    <Badge variant={student.trend === 'up' ? 'default' : 'destructive'} className="ml-auto rounded-full">
+                      {student.trend === 'up' ? (
+                        <TrendingUp className="h-3 w-3 mr-1" />
+                      ) : (
+                        <TrendingDown className="h-3 w-3 mr-1" />
+                      )}
+                      {student.average}%
+                    </Badge>
+                  </div>
+                  <div className="text-sm text-muted-foreground flex items-center gap-2">
+                    <span>{student.level}</span>
+                    <span>•</span>
+                    <span><Star className="h-3 w-3 inline mr-1" />{student.badges} badges</span>
+                    <span>•</span>
+                    <span><Flame className="h-3 w-3 inline mr-1" />{student.streak} day streak</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 } 

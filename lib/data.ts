@@ -1,60 +1,67 @@
 export interface Student {
-  id: number;
+  id: string;
   name: string;
   email: string;
-  avatar: string;
+  avatar?: string;
   score: number;
   level: number;
   average: number;
-  attendance: string;
-  submissions: string;
-  lastSubmission: string;
-  status: 'Excellent' | 'Good' | 'At Risk';
-  trend: 'up' | 'down' | 'stable';
+  attendance: number;
+  submissions: number;
+  lastSubmission?: Date;
+  status: string;
+  trend: string;
   badges: string[];
   progress: number;
   streak: number;
-  recentAchievement: string;
-  courseId: number;
   grade: string;
+  courseId: string;
+  course: {
+    name: string;
+    code: string;
+  };
 }
 
 export interface Course {
-  id: number;
+  id: string;
   name: string;
   code: string;
-  instructor: string;
-  description: string;
+  description?: string;
+  instructor: {
+    name: string;
+    email: string;
+  };
   status: string;
   week: number;
-  submissions: number;
-  average: number;
-  attendance: number;
   progress: number;
   credits: number;
-  score: number;
-  trend: string;
-  lastSubmission: string;
-  totalStudents: number;
+  average: number;
+  attendance: number;
   passRate: number;
-  atRiskCount: number;
   classAverage: number;
+  totalStudents: number;
+  atRiskCount: number;
+  students: Student[];
 }
 
-export interface CalendarEvent {
+export interface Event {
   id: string;
   title: string;
-  date: string;
-  time: string;
-  type: 'lecture' | 'exam' | 'deadline' | 'office-hours' | 'meeting';
-  course?: string;
+  date: Date;
+  time?: string;
+  type: string;
   description?: string;
+  courseId?: string;
+  course?: {
+    name: string;
+    code: string;
+  };
 }
 
 function getBaseUrl() {
   if (typeof window !== 'undefined') {
-    // Browser should use relative path
-    return '';
+    // Browser should use current origin
+    return window.location.origin;
   }
   if (process.env.VERCEL_URL) {
     // Reference for vercel.com
@@ -66,76 +73,49 @@ function getBaseUrl() {
 
 // Data loading functions
 export async function loadStudents(): Promise<Student[]> {
-  try {
-    const baseUrl = getBaseUrl();
-    const response = await fetch(`${baseUrl}/api/students`, { 
-      headers: { 'Content-Type': 'application/json' }
-    });
-    if (!response.ok) {
-      throw new Error('Failed to fetch students');
-    }
-    return response.json();
-  } catch (error) {
-    console.error('Error loading students:', error);
-    return [];
-  }
+  const baseUrl = getBaseUrl();
+  const res = await fetch(`${baseUrl}/api/students`);
+  if (!res.ok) throw new Error("Failed to fetch students");
+  return res.json();
 }
 
 export async function loadCourses(): Promise<Course[]> {
-  try {
-    const baseUrl = getBaseUrl();
-    const response = await fetch(`${baseUrl}/api/courses`, {
-      headers: { 'Content-Type': 'application/json' }
-    });
-    if (!response.ok) {
-      throw new Error('Failed to fetch courses');
-    }
-    return response.json();
-  } catch (error) {
-    console.error('Error loading courses:', error);
-    return [];
-  }
+  const baseUrl = getBaseUrl();
+  const res = await fetch(`${baseUrl}/api/courses`);
+  if (!res.ok) throw new Error("Failed to fetch courses");
+  return res.json();
 }
 
-export async function loadCalendarEvents(): Promise<CalendarEvent[]> {
-  try {
-    const baseUrl = getBaseUrl();
-    const response = await fetch(`${baseUrl}/api/events`, {
-      headers: { 'Content-Type': 'application/json' }
-    });
-    if (!response.ok) {
-      throw new Error('Failed to fetch calendar events');
-    }
-    return response.json();
-  } catch (error) {
-    console.error('Error loading calendar events:', error);
-    return [];
-  }
+export async function loadCalendarEvents(): Promise<Event[]> {
+  const baseUrl = getBaseUrl();
+  const res = await fetch(`${baseUrl}/api/events`);
+  if (!res.ok) throw new Error("Failed to fetch events");
+  return res.json();
 }
 
 export async function getStudentsByCourse(courseId: string): Promise<Student[]> {
   const students = await loadStudents();
-  return students.filter(student => student.courseId.toString() === courseId);
+  return students.filter(student => student.courseId === courseId);
 }
 
-export async function getCourseById(courseId: string): Promise<Course | null> {
+export async function getCourseById(id: string): Promise<Course | null> {
   const courses = await loadCourses();
-  return courses.find(course => course.id.toString() === courseId) || null;
+  return courses.find(course => course.id === id) || null;
 }
 
-export async function getStudentById(studentId: number): Promise<Student | null> {
+export async function getStudentById(studentId: string): Promise<Student | null> {
   const students = await loadStudents();
   return students.find(student => student.id === studentId) || null;
 }
 
-export async function getEventsByCourse(courseId: string): Promise<CalendarEvent[]> {
+export async function getEventsByCourse(courseId: string): Promise<Event[]> {
   const events = await loadCalendarEvents();
   const courses = await loadCourses();
   
-  const course = courses.find(c => c.id.toString() === courseId);
+  const course = courses.find(c => c.id === courseId);
   if (!course) return [];
   
-  return events.filter(event => event.course === course.name);
+  return events.filter(event => event.courseId === course.id);
 }
 
 // Utility functions

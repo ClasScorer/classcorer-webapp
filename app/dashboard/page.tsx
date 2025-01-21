@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import { CalendarDays, GraduationCap, BookOpen, Bell } from "lucide-react";
+import { CalendarDays, GraduationCap, BookOpen, Bell, ArrowRight } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -14,6 +14,9 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { loadCourses, loadCalendarEvents, loadStudents, formatPercentage, formatTrend, type Course, type CalendarEvent, type Student } from "@/lib/data";
 import { Suspense } from "react";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { getInitials } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Professor Dashboard",
@@ -43,23 +46,23 @@ async function getTotalStats() {
 
   // Calculate upcoming deadlines with accurate submission counts
   const upcomingDeadlines = events
-    .filter((event: CalendarEvent) => 
+    .filter(event => 
       event.type === 'deadline' && 
       new Date(event.date) >= new Date()
     )
-    .sort((a: CalendarEvent, b: CalendarEvent) => 
+    .sort((a, b) => 
       new Date(a.date).getTime() - new Date(b.date).getTime()
     )
     .slice(0, 3)
-    .map((event: CalendarEvent): Deadline => {
-      const courseStudents = students.filter(s => String(s.courseId) === String(event.course));
-      const course = courses.find(c => String(c.code) === String(event.course));
+    .map(event => {
+      const course = courses.find(c => c.id === event.courseId);
+      const courseStudents = students.filter(s => s.courseId === event.courseId);
       return {
-        course: event.course || '',
+        course: course?.code || '',
         task: event.title,
-        dueDate: event.date,
-        submissions: courseStudents.filter(s => Number(s.submissions) > 0).length,
-        totalStudents: course?.totalStudents || courseStudents.length,
+        dueDate: new Date(event.date).toLocaleDateString(),
+        submissions: courseStudents.filter(s => s.submissions > 0).length,
+        totalStudents: courseStudents.length,
       };
     });
 
@@ -68,27 +71,38 @@ async function getTotalStats() {
   const totalStudents = uniqueStudentIds.size;
 
   // Calculate at-risk students (students with average below 60% or attendance below 70%)
-  const atRiskStudents = students.filter(student => {
-    const average = Number(student.average);
-    const attendance = Number(student.attendance.toString().replace('%', ''));
-    return average < 60 || attendance < 70;
-  }).length;
+  const atRiskStudents = students.filter(student => 
+    student.average < 60 || student.attendance < 70
+  ).length;
 
   // Calculate weighted averages based on student count
   const averageAttendance = totalStudents === 0 ? 0 : Math.round(
-    students.reduce((sum, student) => {
-      const attendance = typeof student.attendance === 'string' 
-        ? parseInt(student.attendance.replace('%', ''))
-        : student.attendance;
-      return sum + attendance;
-    }, 0) / totalStudents
+    students.reduce((sum, student) => sum + student.attendance, 0) / totalStudents
   );
 
   const averagePassRate = totalStudents === 0 ? 0 : Math.round(
-    students.reduce((sum, student) => {
-      return sum + (student.average >= 60 ? 1 : 0);
-    }, 0) * 100 / totalStudents
+    students.reduce((sum, student) => sum + (student.average >= 60 ? 1 : 0), 0) * 100 / totalStudents
   );
+
+  // Get recent events for announcements
+  const recentEvents = events
+    .filter(event => 
+      event.type === 'announcement' && 
+      new Date(event.date) <= new Date()
+    )
+    .sort((a, b) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    )
+    .slice(0, 3)
+    .map(event => {
+      const course = courses.find(c => c.id === event.courseId);
+      return {
+        course: course?.code || '',
+        title: event.title,
+        date: new Date(event.date).toLocaleDateString(),
+        priority: event.type === 'urgent' ? 'high' as const : 'normal' as const,
+      };
+    });
 
   return {
     totalStudents,
@@ -96,26 +110,7 @@ async function getTotalStats() {
     averagePassRate,
     atRiskStudents,
     upcomingDeadlines,
-    recentAnnouncements: [
-      {
-        course: "CSE123",
-        title: "Extra Office Hours Added",
-        date: new Date().toISOString().split('T')[0],
-        priority: "normal" as const,
-      },
-      {
-        course: "CSE234",
-        title: "Project Deadline Extended",
-        date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-        priority: "high" as const,
-      },
-      {
-        course: "CSE456",
-        title: "Guest Lecture Next Week",
-        date: new Date(Date.now() - 172800000).toISOString().split('T')[0],
-        priority: "normal" as const,
-      },
-    ],
+    recentAnnouncements: recentEvents,
   };
 }
 
@@ -123,6 +118,26 @@ export default async function DashboardPage() {
   const totalStats = await getTotalStats();
   const courses = await loadCourses();
   const students = await loadStudents();
+
+  // Calculate course-specific stats
+  const courseStats = courses.map(course => {
+    const courseStudents = students.filter(s => s.courseId === course.id);
+    const averageAttendance = courseStudents.length > 0
+      ? Math.round(courseStudents.reduce((sum, s) => sum + s.attendance, 0) / courseStudents.length)
+      : 0;
+    const averageScore = courseStudents.length > 0
+      ? Math.round(courseStudents.reduce((sum, s) => sum + s.average, 0) / courseStudents.length)
+      : 0;
+    const atRiskCount = courseStudents.filter(s => s.average < 60 || s.attendance < 70).length;
+
+    return {
+      ...course,
+      averageAttendance,
+      averageScore,
+      atRiskCount,
+      totalStudents: courseStudents.length,
+    };
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -136,11 +151,12 @@ export default async function DashboardPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button>
-              <Bell className="mr-2 h-4 w-4" />
-              Notifications
+            <Button asChild>
+              <Link href="/dashboard/calendar">
+                <CalendarDays className="mr-2 h-4 w-4" />
+                View Calendar
+              </Link>
             </Button>
-            <Button variant="outline">View Calendar</Button>
           </div>
         </div>
 
@@ -153,7 +169,7 @@ export default async function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {students.length}
+                {totalStats.totalStudents}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 Across {courses.length} courses
@@ -161,7 +177,7 @@ export default async function DashboardPage() {
               <div className="mt-3">
                 <div className="text-xs text-muted-foreground">At Risk Students</div>
                 <div className="text-sm font-medium text-red-500">
-                  {students.filter(s => Number(s.average) < 60 || Number(s.attendance.toString().replace('%', '')) < 70).length} students need attention
+                  {totalStats.atRiskStudents} students need attention
                 </div>
               </div>
             </CardContent>
@@ -203,12 +219,65 @@ export default async function DashboardPage() {
             <CardContent>
               <div className="text-2xl font-bold">{totalStats.upcomingDeadlines.length}</div>
               <div className="mt-2 space-y-1">
-                {totalStats.upcomingDeadlines.slice(0, 2).map((deadline: Deadline) => (
+                {totalStats.upcomingDeadlines.slice(0, 2).map((deadline) => (
                   <div key={`${deadline.course}-${deadline.task}`} className="text-xs">
                     <div className="font-medium">{deadline.course}: {deadline.task}</div>
-                    <div className="text-muted-foreground">Due: {deadline.dueDate}</div>
+                    <div className="text-muted-foreground">
+                      Due: {deadline.dueDate} ({deadline.submissions}/{deadline.totalStudents} submitted)
+                    </div>
                   </div>
                 ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Performance Graph */}
+        <div className="grid gap-4 md:grid-cols-7">
+          <Card className="col-span-5">
+            <CardHeader>
+              <CardTitle>Performance Overview</CardTitle>
+              <CardDescription>Track submissions, scores, and attendance over time</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PerformanceGraph courses={courseStats} />
+            </CardContent>
+          </Card>
+          <Card className="col-span-2">
+            <CardHeader>
+              <CardTitle>Performance Summary</CardTitle>
+              <CardDescription>Key metrics this week</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <div className="text-sm font-medium">Average Score</div>
+                <div className="text-2xl font-bold text-green-600">
+                  {Math.round(courseStats.reduce((sum, course) => sum + course.averageScore, 0) / courseStats.length)}%
+                </div>
+                <Progress 
+                  value={Math.round(courseStats.reduce((sum, course) => sum + course.averageScore, 0) / courseStats.length)} 
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <div className="text-sm font-medium">Submission Rate</div>
+                <div className="text-2xl font-bold text-blue-600">
+                  {Math.round(courseStats.reduce((sum, course) => sum + (course.submissions || 0), 0) / courseStats.length)}%
+                </div>
+                <Progress 
+                  value={Math.round(courseStats.reduce((sum, course) => sum + (course.submissions || 0), 0) / courseStats.length)} 
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <div className="text-sm font-medium">Attendance Rate</div>
+                <div className="text-2xl font-bold text-rose-600">
+                  {Math.round(courseStats.reduce((sum, course) => sum + course.averageAttendance, 0) / courseStats.length)}%
+                </div>
+                <Progress 
+                  value={Math.round(courseStats.reduce((sum, course) => sum + course.averageAttendance, 0) / courseStats.length)} 
+                  className="mt-2"
+                />
               </div>
             </CardContent>
           </Card>
@@ -222,7 +291,7 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-              {courses.map((course: Course) => (
+              {courseStats.map((course) => (
                 <Link 
                   key={course.id}
                   href={`/dashboard/courses/${course.id}`}
@@ -235,13 +304,13 @@ export default async function DashboardPage() {
                         <p className="text-sm text-muted-foreground">{course.name}</p>
                       </div>
                       <span className={`text-xs px-2 py-1 rounded-full ${
-                        course.status === 'ahead' ? 'bg-green-100 text-green-700' :
-                        course.status === 'on-track' ? 'bg-blue-100 text-blue-700' :
+                        course.averageScore >= 80 ? 'bg-green-100 text-green-700' :
+                        course.averageScore >= 70 ? 'bg-blue-100 text-blue-700' :
                         'bg-amber-100 text-amber-700'
                       }`}>
-                        {course.status === 'ahead' ? 'Ahead' :
-                         course.status === 'on-track' ? 'On Track' :
-                         'Behind'}
+                        {course.averageScore >= 80 ? 'Excellent' :
+                         course.averageScore >= 70 ? 'Good' :
+                         'Needs Attention'}
                       </span>
                     </div>
                     <div className="space-y-2">
@@ -250,14 +319,22 @@ export default async function DashboardPage() {
                         <span>{course.progress}%</span>
                       </div>
                       <Progress value={course.progress} />
-                      <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                      <div className="grid grid-cols-2 gap-2 text-sm">
                         <div>
-                          <div>Students</div>
+                          <div className="text-muted-foreground">Students</div>
                           <div className="font-medium">{course.totalStudents}</div>
                         </div>
                         <div>
-                          <div>Average</div>
-                          <div className="font-medium">{course.classAverage}%</div>
+                          <div className="text-muted-foreground">At Risk</div>
+                          <div className="font-medium text-red-500">{course.atRiskCount}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Attendance</div>
+                          <div className="font-medium">{course.averageAttendance}%</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Average</div>
+                          <div className="font-medium">{course.averageScore}%</div>
                         </div>
                       </div>
                     </div>
@@ -268,29 +345,36 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Recent Activity */}
-        <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+        {/* Recent Announcements and Student Leaderboard side by side */}
+        <div className="grid gap-4 md:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Recent Announcements</CardTitle>
-              <CardDescription>Latest updates across all courses</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Recent Announcements</CardTitle>
+                  <CardDescription>Latest updates from your courses</CardDescription>
+                </div>
+                <Button variant="outline" size="sm">
+                  View All
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {totalStats.recentAnnouncements.map((announcement, index) => (
-                  <div
-                    key={index}
-                    className="flex items-start gap-4 p-3 rounded-lg hover:bg-accent transition-colors"
-                  >
-                    <div className={`w-2 h-2 mt-2 rounded-full ${
-                      announcement.priority === 'high' ? 'bg-red-500' : 'bg-blue-500'
-                    }`} />
-                    <div className="flex-1">
-                      <div className="flex justify-between">
-                        <h4 className="text-sm font-medium">{announcement.title}</h4>
-                        <span className="text-xs text-muted-foreground">{announcement.date}</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{announcement.course}</p>
+                {totalStats.recentAnnouncements.map((event) => (
+                  <div key={event.course} className="flex items-start gap-4">
+                    <Avatar>
+                      <AvatarImage src={event.course?.instructor?.avatar} />
+                      <AvatarFallback>
+                        {getInitials(event.course?.instructor?.name || 'Instructor')}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium leading-none">{event.title}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {event.course?.name} • {formatDate(event.date)}
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -298,62 +382,26 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Upcoming Deadlines */}
           <Card>
             <CardHeader>
-              <CardTitle>Upcoming Deadlines</CardTitle>
-              <CardDescription>Assignment and project due dates</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Student Leaderboard</CardTitle>
+                  <CardDescription>Top performing students</CardDescription>
+                </div>
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/dashboard/leaderboard">
+                    View All
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {totalStats.upcomingDeadlines.map((deadline: Deadline, index: number) => (
-                  <div
-                    key={index}
-                    className="flex items-start gap-4 p-3 rounded-lg hover:bg-accent transition-colors"
-                  >
-                    <div className="flex-1">
-                      <div className="flex justify-between">
-                        <h4 className="text-sm font-medium">{deadline.task}</h4>
-                        <span className="text-xs text-muted-foreground">{deadline.dueDate}</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{deadline.course}</p>
-                      <div className="mt-2">
-                        <div className="text-xs text-muted-foreground">Submissions</div>
-                        <div className="flex items-center gap-2">
-                          <Progress 
-                            value={(deadline.submissions / deadline.totalStudents) * 100} 
-                            className="flex-1"
-                          />
-                          <span className="text-xs font-medium">
-                            {deadline.submissions}/{deadline.totalStudents}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <StudentLeaderboard />
             </CardContent>
           </Card>
         </div>
-
-        {/* Analytics Section */}
-
-              <Suspense fallback={<div>Loading...</div>}>
-                <PerformanceGraph courses={courses} />
-              </Suspense>
-        {/* Top Students */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Top Performing Students</CardTitle>
-            <CardDescription>Students with exceptional performance across all courses</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Suspense fallback={<div>Loading...</div>}>
-              <StudentLeaderboard />
-            </Suspense>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

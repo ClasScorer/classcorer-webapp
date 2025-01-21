@@ -41,10 +41,10 @@ function calculateWeeklyStats(courses: Course[]): PerformanceData[] {
       sum + (course.submissions * course.totalStudents), 0) / totalStudents
     
     const average = weekCourses.reduce((sum, course) => 
-      sum + (course.average * course.totalStudents), 0) / totalStudents
+      sum + (course.averageScore * course.totalStudents), 0) / totalStudents
     
     const attendance = weekCourses.reduce((sum, course) => 
-      sum + (course.attendance * course.totalStudents), 0) / totalStudents
+      sum + (course.averageAttendance * course.totalStudents), 0) / totalStudents
     
     weeklyStats.push({
       week,
@@ -61,34 +61,40 @@ export function PerformanceGraph({ courses }: { courses: Course[] }) {
   const data = calculateWeeklyStats(courses)
 
   return (
-    <Card>
+    <Card className="col-span-1">
       <CardHeader>
         <CardTitle>Performance Overview</CardTitle>
         <CardDescription>Weekly performance metrics across all courses</CardDescription>
       </CardHeader>
-      <CardContent className="pb-4">
-        <div className="h-[200px]">
+      <CardContent className="pt-4 pb-8">
+        <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="week" tickFormatter={(week) => `Week ${week}`} />
-              <YAxis />
+            <LineChart data={data} margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis 
+                dataKey="week" 
+                tickFormatter={(week) => `Week ${week}`}
+                stroke="#6b7280"
+                fontSize={12}
+              />
+              <YAxis 
+                stroke="#6b7280"
+                fontSize={12}
+                tickFormatter={(value) => `${value}%`}
+              />
               <Tooltip
                 content={({ active, payload }) => {
                   if (active && payload && payload.length) {
                     return (
-                      <div className="rounded-lg border bg-background p-2 shadow-sm">
-                        <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-lg border bg-background p-3 shadow-lg">
+                        <div className="grid gap-2">
                           <div className="flex flex-col">
-                            <span className="text-[0.70rem] uppercase text-muted-foreground">
-                              Week
-                            </span>
-                            <span className="font-bold text-muted-foreground">
-                              {payload[0].payload.week}
+                            <span className="text-[0.70rem] uppercase text-muted-foreground font-medium">
+                              Week {payload[0].payload.week}
                             </span>
                           </div>
                           {payload.map((p) => (
-                            <div key={p.dataKey} className="flex flex-col">
+                            <div key={p.dataKey} className="flex items-center justify-between gap-2">
                               <span className="text-[0.70rem] uppercase text-muted-foreground">
                                 {p.dataKey}
                               </span>
@@ -104,27 +110,39 @@ export function PerformanceGraph({ courses }: { courses: Course[] }) {
                   return null
                 }}
               />
-              <Legend />
+              <Legend 
+                verticalAlign="top"
+                height={36}
+                iconType="circle"
+                formatter={(value) => (
+                  <span className="text-sm capitalize text-muted-foreground">
+                    {value}
+                  </span>
+                )}
+              />
               <Line
                 type="monotone"
                 strokeWidth={2}
                 dataKey="submissions"
-                stroke="#2563eb"
-                activeDot={{ r: 6, style: { fill: "#2563eb", opacity: 0.25 } }}
+                stroke="#3b82f6"
+                dot={false}
+                activeDot={{ r: 8, strokeWidth: 0 }}
               />
               <Line
                 type="monotone"
                 strokeWidth={2}
                 dataKey="average"
-                stroke="#16a34a"
-                activeDot={{ r: 6, style: { fill: "#16a34a", opacity: 0.25 } }}
+                stroke="#22c55e"
+                dot={false}
+                activeDot={{ r: 8, strokeWidth: 0 }}
               />
               <Line
                 type="monotone"
                 strokeWidth={2}
                 dataKey="attendance"
-                stroke="#dc2626"
-                activeDot={{ r: 6, style: { fill: "#dc2626", opacity: 0.25 } }}
+                stroke="#f43f5e"
+                dot={false}
+                activeDot={{ r: 8, strokeWidth: 0 }}
               />
             </LineChart>
           </ResponsiveContainer>

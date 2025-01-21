@@ -1,6 +1,0 @@
-id,name,code,instructor,description,status,week,submissions,average,attendance,progress,credits,score,trend,lastSubmission,totalStudents,passRate,atRiskCount,classAverage
-1,Introduction to Computer Science,CS101,Dr. Adham,Learn the fundamentals of programming,on-track,1,85,78,92,75,3,82,up,2024-03-15,120,88,8,82
-2,Data Structures and Algorithms,CS201,Dr. Adham,Advanced programming concepts,ahead,2,92,85,88,80,4,88,up,2024-03-14,95,92,4,85
-3,Database Systems,CS301,Dr. Adham,Database design and SQL,on-track,3,78,72,85,65,4,75,down,2024-03-13,85,82,12,76
-4,Web Development,CS401,Dr. Adham,Modern web technologies,behind,2,65,68,75,60,3,70,down,2024-03-12,110,78,15,72
-5,Machine Learning,CS501,Dr. Adham,AI and ML fundamentals,on-track,1,88,82,90,70,4,85,up,2024-03-15,75,90,6,84 
