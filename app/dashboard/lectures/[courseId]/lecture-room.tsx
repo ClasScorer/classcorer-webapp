@@ -278,15 +278,34 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     const context = canvas.getContext('2d')
     if (!context) return
 
-    // Get the container dimensions
+    const video = videoRef.current
     const container = canvas.parentElement
     if (!container) return
 
-    // Set canvas dimensions to match container
+    // Get the container dimensions
     const rect = container.getBoundingClientRect()
-    if (canvas.width !== rect.width || canvas.height !== rect.height) {
-      canvas.width = rect.width
-      canvas.height = rect.height
+
+    // Set canvas dimensions to match container for display
+    canvas.width = rect.width
+    canvas.height = rect.height
+
+    // Calculate video display dimensions while maintaining aspect ratio
+    const videoAspect = video.videoWidth / video.videoHeight
+    const containerAspect = rect.width / rect.height
+    
+    let displayWidth = rect.width
+    let displayHeight = rect.height
+    let offsetX = 0
+    let offsetY = 0
+
+    if (containerAspect > videoAspect) {
+      // Container is wider than video
+      displayWidth = displayHeight * videoAspect
+      offsetX = (rect.width - displayWidth) / 2
+    } else {
+      // Container is taller than video
+      displayHeight = displayWidth / videoAspect
+      offsetY = (rect.height - displayHeight) / 2
     }
 
     // Clear the entire canvas
@@ -294,43 +313,47 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     
     // Draw bounding boxes
     coordinates.forEach(coord => {
+      // Skip objects with less than 70% confidence
+      if (coord.score < 0.7) return;
+
       // Save the current context state
       context.save()
       
-      // Scale coordinates to match canvas size
-      const scaleX = canvas.width / videoRef.current!.videoWidth
-      const scaleY = canvas.height / videoRef.current!.videoHeight
+      // Calculate scaled coordinates
+      const scaleX = displayWidth / video.videoWidth
+      const scaleY = displayHeight / video.videoHeight
       
-      const x = coord.x_min * scaleX
-      const y = coord.y_min * scaleY
+      // Since video is mirrored, flip the x coordinates
+      const x = rect.width - (coord.x_min * scaleX + offsetX) - (coord.x_max - coord.x_min) * scaleX
+      const y = coord.y_min * scaleY + offsetY
       const width = (coord.x_max - coord.x_min) * scaleX
       const height = (coord.y_max - coord.y_min) * scaleY
       
       // Set styles for box
-      context.strokeStyle = 'red'
-      context.lineWidth = 4
+      context.strokeStyle = '#2196F3' // Material Blue
+      context.lineWidth = 2
       
-      // Draw box
+      // Draw box with semi-transparent fill
+      context.fillStyle = 'rgba(33, 150, 243, 0.1)' // Light blue with low opacity
+      context.fillRect(x, y, width, height)
       context.strokeRect(x, y, width, height)
-      
-      // Set styles for label
-      context.fillStyle = 'red'
-      context.font = 'bold 24px Arial'
       
       // Draw label with background
       const label = `Person ${coord.human_id} (${Math.round(coord.score * 100)}%)`
       const labelWidth = context.measureText(label).width
       
       // Draw label background
-      context.fillStyle = 'rgba(0, 0, 0, 0.8)'
-      context.fillRect(x, y - 30, labelWidth + 10, 30)
+      const labelY = y > 30 ? y - 24 : y + height + 4 // Place label above or below based on position
+      context.fillStyle = 'rgba(0, 0, 0, 0.7)'
+      context.fillRect(x, labelY, labelWidth + 8, 20)
       
       // Draw label text
-      context.fillStyle = 'red'
+      context.fillStyle = 'white'
+      context.font = '14px Inter, system-ui, sans-serif'
       context.fillText(
         label,
-        x + 5,
-        y - 8
+        x + 4,
+        labelY + 14
       )
       
       // Restore the context state
@@ -350,13 +373,17 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     const container = canvas.parentElement
     if (!container) return
 
-    // Set canvas dimensions to match container
-    const rect = container.getBoundingClientRect()
-    canvas.width = rect.width
-    canvas.height = rect.height
+    // Set canvas dimensions to match video dimensions for accurate capture
+    const video = videoRef.current
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
 
-    // Draw the current frame on canvas
-    context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height)
+    // Draw the current frame on canvas at original size
+    context.save()
+    context.scale(-1, 1) // Mirror the image
+    context.translate(-canvas.width, 0)
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    context.restore()
 
     // Convert canvas to blob
     try {
