@@ -1,6 +1,6 @@
 "use client"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts"
 import { type Course } from "@/lib/data"
 
@@ -12,18 +12,13 @@ interface PerformanceData {
 }
 
 function calculateWeeklyStats(courses: Course[]): PerformanceData[] {
-  // Find the maximum week across all courses
   const maxWeek = Math.max(...courses.map(course => course.week))
-  
-  // Initialize weekly stats array
   const weeklyStats: PerformanceData[] = []
   
-  // Calculate stats for each week
   for (let week = 1; week <= maxWeek; week++) {
     const weekCourses = courses.filter(course => course.week === week)
     
     if (weekCourses.length === 0) {
-      // If no courses for this week, use previous week's data or default values
       const previousWeek = weeklyStats[weeklyStats.length - 1]
       weeklyStats.push({
         week,
@@ -34,7 +29,6 @@ function calculateWeeklyStats(courses: Course[]): PerformanceData[] {
       continue
     }
     
-    // Calculate weighted averages for the week based on student count
     const totalStudents = weekCourses.reduce((sum, course) => sum + course.totalStudents, 0)
     
     const submissions = weekCourses.reduce((sum, course) => 
@@ -61,93 +55,101 @@ export function PerformanceGraph({ courses }: { courses: Course[] }) {
   const data = calculateWeeklyStats(courses)
 
   return (
-    <Card className="col-span-1">
-      <CardHeader>
-        <CardTitle>Performance Overview</CardTitle>
-        <CardDescription>Weekly performance metrics across all courses</CardDescription>
-      </CardHeader>
-      <CardContent className="pt-4 pb-8">
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis 
-                dataKey="week" 
-                tickFormatter={(week) => `Week ${week}`}
-                stroke="#6b7280"
-                fontSize={12}
-              />
-              <YAxis 
-                stroke="#6b7280"
-                fontSize={12}
-                tickFormatter={(value) => `${value}%`}
-              />
-              <Tooltip
-                content={({ active, payload }) => {
-                  if (active && payload && payload.length) {
-                    return (
-                      <div className="rounded-lg border bg-background p-3 shadow-lg">
-                        <div className="grid gap-2">
-                          <div className="flex flex-col">
-                            <span className="text-[0.70rem] uppercase text-muted-foreground font-medium">
-                              Week {payload[0].payload.week}
-                            </span>
-                          </div>
-                          {payload.map((p) => (
-                            <div key={p.dataKey} className="flex items-center justify-between gap-2">
-                              <span className="text-[0.70rem] uppercase text-muted-foreground">
-                                {p.dataKey}
-                              </span>
-                              <span className="font-bold" style={{ color: p.color }}>
-                                {p.value}%
-                              </span>
-                            </div>
-                          ))}
+    <div className="h-[350px] w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart
+          data={data}
+          margin={{ top: 20, right: 30, left: 10, bottom: 10 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+          <XAxis
+            dataKey="week"
+            tickFormatter={(week) => `W${week}`}
+            stroke="#6b7280"
+            fontSize={12}
+            tickLine={false}
+            axisLine={false}
+            dy={10}
+          />
+          <YAxis
+            stroke="#6b7280"
+            fontSize={12}
+            tickFormatter={(value) => `${value}%`}
+            tickLine={false}
+            axisLine={false}
+            dx={-10}
+          />
+          <Tooltip
+            content={({ active, payload, label }) => {
+              if (active && payload && payload.length) {
+                return (
+                  <div className="rounded-lg border bg-background p-3 shadow-lg">
+                    <div className="mb-2 text-sm font-medium">
+                      Week {label}
+                    </div>
+                    <div className="space-y-1">
+                      {payload.map((p) => (
+                        <div key={p.dataKey} className="flex items-center justify-between gap-8">
+                          <span className="text-sm capitalize text-muted-foreground">
+                            {p.dataKey}
+                          </span>
+                          <span className="text-sm font-medium" style={{ color: p.color }}>
+                            {p.value}%
+                          </span>
                         </div>
-                      </div>
-                    )
-                  }
-                  return null
-                }}
-              />
-              <Legend 
-                verticalAlign="top"
-                height={36}
-                iconType="circle"
-                formatter={(value) => (
-                  <span className="text-sm capitalize text-muted-foreground">
-                    {value}
-                  </span>
-                )}
-              />
-              <Line
-                type="monotone"
-                strokeWidth={2}
-                dataKey="submissions"
-                stroke="#3b82f6"
-                dot={false}
-                activeDot={{ r: 8, strokeWidth: 0 }}
-              />
-              <Line
-                type="monotone"
-                strokeWidth={2}
-                dataKey="average"
-                stroke="#22c55e"
-                dot={false}
-                activeDot={{ r: 8, strokeWidth: 0 }}
-              />
-              <Line
-                type="monotone"
-                strokeWidth={2}
-                dataKey="attendance"
-                stroke="#f43f5e"
-                dot={false}
-                activeDot={{ r: 8, strokeWidth: 0 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </CardContent>
-    </Card>
+                      ))}
+                    </div>
+                  </div>
+                )
+              }
+              return null
+            }}
+          />
+          <Legend
+            verticalAlign="top"
+            height={36}
+            content={({ payload }) => (
+              <div className="flex justify-center gap-6">
+                {payload?.map((entry) => (
+                  <div key={entry.value} className="flex items-center gap-2">
+                    <div
+                      className="h-3 w-3 rounded-full"
+                      style={{ backgroundColor: entry.color }}
+                    />
+                    <span className="text-sm text-muted-foreground capitalize">
+                      {entry.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          />
+          <Line
+            type="monotone"
+            dataKey="submissions"
+            stroke="#3b82f6"
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 6, strokeWidth: 0 }}
+          />
+          <Line
+            type="monotone"
+            dataKey="average"
+            stroke="#22c55e"
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 6, strokeWidth: 0 }}
+          />
+          <Line
+            type="monotone"
+            dataKey="attendance"
+            stroke="#f43f5e"
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 6, strokeWidth: 0 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   )
 } 

@@ -28,154 +28,96 @@ function getInitials(name: string) {
 function getRankBadge(rank: number) {
   switch (rank) {
     case 1:
-      return <Trophy className="h-6 w-6 text-yellow-500" />
+      return <Trophy className="h-4 w-4 text-yellow-500" />
     case 2:
-      return <Medal className="h-6 w-6 text-gray-400" />
+      return <Medal className="h-4 w-4 text-gray-400" />
     case 3:
-      return <Award className="h-6 w-6 text-amber-600" />
+      return <Award className="h-4 w-4 text-amber-600" />
     default:
-      return <span className="font-bold text-muted-foreground">#{rank}</span>
+      return null
   }
 }
 
 function getPerformanceColor(average: number) {
+  if (average >= 90) return "bg-green-500"
+  if (average >= 80) return "bg-emerald-500"
+  if (average >= 70) return "bg-blue-500"
+  return "bg-muted"
+}
+
+function getTextColor(average: number) {
   if (average >= 90) return "text-green-500"
   if (average >= 80) return "text-emerald-500"
   if (average >= 70) return "text-blue-500"
-  if (average >= 60) return "text-amber-500"
-  return "text-red-500"
+  return "text-muted-foreground"
 }
 
 export async function StudentLeaderboard() {
   const students = await loadStudents()
   
-  // Sort students by average score and calculate ranks
-  const rankedStudents = students
+  // Sort students by average score and get top 5
+  const topStudents = students
     .sort((a, b) => b.average - a.average)
+    .slice(0, 5)
     .map((student, index) => ({
       ...student,
       rank: index + 1
     }))
 
   return (
-    <div className="space-y-8">
-      {/* Top 3 Students */}
-      <div className="flex flex-col space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold">Top Performers</h2>
-            <p className="text-muted-foreground">Leading students across all courses</p>
+    <CardContent className="space-y-4">
+      {topStudents.map((student) => (
+        <div
+          key={student.id}
+          className="flex items-center gap-4 p-3 rounded-lg bg-card hover:bg-accent/5 transition-colors"
+        >
+          <div className="flex-none w-8 text-center">
+            {getRankBadge(student.rank) || (
+              <span className="text-sm font-medium text-muted-foreground">
+                #{student.rank}
+              </span>
+            )}
           </div>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {rankedStudents.slice(0, 3).map((student) => (
-            <Card key={student.id} className={`relative overflow-hidden transition-all duration-200 hover:shadow-lg ${student.rank === 1 ? 'bg-gradient-to-br from-yellow-50 to-white border-yellow-200' : ''}`}>
-              <div className="absolute right-4 top-4">
-                {getRankBadge(student.rank)}
+          
+          <Avatar className="h-8 w-8">
+            <AvatarImage src={student.avatar} alt={student.name} />
+            <AvatarFallback className="bg-primary/10">
+              {getInitials(student.name)}
+            </AvatarFallback>
+          </Avatar>
+          
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium truncate">
+                {student.name}
+              </p>
+              <div className="flex items-center gap-2">
+                <Badge 
+                  variant="outline" 
+                  className={`${getTextColor(student.average)}`}
+                >
+                  {student.average}%
+                </Badge>
               </div>
-              <CardHeader>
-                <div className="flex items-center gap-4">
-                  <Avatar className="h-16 w-16 border-2 border-muted">
-                    <AvatarImage src={student.avatar} alt={student.name} />
-                    <AvatarFallback className="text-lg">{getInitials(student.name)}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <CardTitle className="text-xl">{student.name}</CardTitle>
-                    <CardDescription className="text-sm mt-1">
-                      {student.level}
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="text-sm font-medium">Average Score</div>
-                      <div className={`text-xl font-bold ${getPerformanceColor(student.average)}`}>
-                        {student.average}%
-                      </div>
-                    </div>
-                    <Progress value={student.average} className="h-2" />
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <div className="text-sm font-medium text-muted-foreground">Attendance</div>
-                      <div className="text-xl font-bold">{student.attendance}%</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-medium text-muted-foreground">Streak</div>
-                      <div className="text-xl font-bold">{student.streak} days</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 pt-2">
-                    <Badge variant={student.trend === 'up' ? 'default' : 'destructive'} className="rounded-full">
-                      {student.trend === 'up' ? (
-                        <TrendingUp className="h-3 w-3 mr-1" />
-                      ) : (
-                        <TrendingDown className="h-3 w-3 mr-1" />
-                      )}
-                      {student.trend === 'up' ? 'Improving' : 'Needs Help'}
-                    </Badge>
-                    <Badge variant="secondary" className="rounded-full">
-                      <Star className="h-3 w-3 mr-1" />
-                      {student.badges} badges
-                    </Badge>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      {/* Rest of the Students */}
-      <Card>
-        <CardHeader className="border-b">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Leaderboard</CardTitle>
-              <CardDescription>All students ranked by performance</CardDescription>
+            </div>
+            <div className="mt-1 relative h-1.5 w-full bg-muted rounded-full overflow-hidden">
+              <div 
+                className={`absolute left-0 top-0 h-full rounded-full transition-all ${getPerformanceColor(student.average)}`}
+                style={{ width: `${student.average}%` }}
+              />
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-xs text-muted-foreground">
+                {student.level}
+              </span>
+              <span className="text-xs text-muted-foreground">•</span>
+              <span className="text-xs text-muted-foreground">
+                {student.streak} day streak
+              </span>
             </div>
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="divide-y">
-            {rankedStudents.slice(3).map((student) => (
-              <div key={student.id} className="flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors">
-                <div className="w-8 text-center">
-                  <span className="font-bold text-muted-foreground">#{student.rank}</span>
-                </div>
-                <Avatar className="h-10 w-10 border border-muted">
-                  <AvatarImage src={student.avatar} alt={student.name} />
-                  <AvatarFallback>{getInitials(student.name)}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <div className="font-medium">{student.name}</div>
-                    <Badge variant={student.trend === 'up' ? 'default' : 'destructive'} className="ml-auto rounded-full">
-                      {student.trend === 'up' ? (
-                        <TrendingUp className="h-3 w-3 mr-1" />
-                      ) : (
-                        <TrendingDown className="h-3 w-3 mr-1" />
-                      )}
-                      {student.average}%
-                    </Badge>
-                  </div>
-                  <div className="text-sm text-muted-foreground flex items-center gap-2">
-                    <span>{student.level}</span>
-                    <span>•</span>
-                    <span><Star className="h-3 w-3 inline mr-1" />{student.badges} badges</span>
-                    <span>•</span>
-                    <span><Flame className="h-3 w-3 inline mr-1" />{student.streak} day streak</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      ))}
+    </CardContent>
   )
 } 

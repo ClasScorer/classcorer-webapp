@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -71,6 +71,16 @@ declare global {
   }
 }
 
+interface Coordinate {
+  human_id: number
+  x_min: number
+  y_min: number
+  x_max: number
+  y_max: number
+  label: string
+  score: number
+}
+
 export function LectureRoom({ course, students }: LectureRoomProps) {
   // State for video/audio controls
   const [isVideoOn, setIsVideoOn] = useState(false)
@@ -88,6 +98,10 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   // Slides state
   const [presentationUrl, setPresentationUrl] = useState<string>("")
   const [embedUrl, setEmbedUrl] = useState<string>("")
+
+  // New state for coordinates
+  const [coordinates, setCoordinates] = useState<Coordinate[]>([])
+  const canvasRef = useRef<HTMLCanvasElement>(null)
 
   // Handle presentation URL change
   const handlePresentationUrl = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -209,16 +223,16 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
         student: {
           id: 'professor',
           name: 'Professor',
-          email: course.instructor,
+          email: course.instructor || '',
           avatar: '/avatars/professor.jpg',
           status: 'Excellent',
-          courseId: String(course.id),
+          courseId: course.id,
           score: 100,
           attendance: 100,
           level: 'Professor',
           average: 100,
-          submissions: Number(course.submissions),
-          lastSubmission: course.lastSubmission,
+          submissions: 0,
+          lastSubmission: new Date().toISOString(),
           grade: 'A+',
           trend: 'up'
         },
@@ -228,6 +242,173 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       setMessageInput("")
     }
   }
+
+  // Function to fetch coordinates
+  const fetchCoordinates = useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:8000/localize-coords', {
+        method: 'GET',
+        mode: 'cors',
+        headers: {
+          'Accept': 'application/json',
+        },
+      })
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      const data = await response.json()
+      console.log('Received coordinates:', data)
+      
+      // Extract bounding boxes from response
+      const boxes = data.bounding_boxes || []
+      setCoordinates(boxes)
+    } catch (error) {
+      console.error('Error fetching coordinates:', error)
+      setCoordinates([]) // Reset coordinates on error
+    }
+  }, [])
+
+  // Function to draw bounding boxes
+  const drawBoundingBoxes = useCallback(() => {
+    if (!canvasRef.current || !coordinates.length || !videoRef.current) {
+      return
+    }
+
+    const canvas = canvasRef.current
+    const context = canvas.getContext('2d')
+    if (!context) return
+
+    // Get the container dimensions
+    const container = canvas.parentElement
+    if (!container) return
+
+    // Set canvas dimensions to match container
+    const rect = container.getBoundingClientRect()
+    if (canvas.width !== rect.width || canvas.height !== rect.height) {
+      canvas.width = rect.width
+      canvas.height = rect.height
+    }
+
+    // Clear the entire canvas
+    context.clearRect(0, 0, canvas.width, canvas.height)
+    
+    // Draw bounding boxes
+    coordinates.forEach(coord => {
+      // Save the current context state
+      context.save()
+      
+      // Scale coordinates to match canvas size
+      const scaleX = canvas.width / videoRef.current!.videoWidth
+      const scaleY = canvas.height / videoRef.current!.videoHeight
+      
+      const x = coord.x_min * scaleX
+      const y = coord.y_min * scaleY
+      const width = (coord.x_max - coord.x_min) * scaleX
+      const height = (coord.y_max - coord.y_min) * scaleY
+      
+      // Set styles for box
+      context.strokeStyle = 'red'
+      context.lineWidth = 4
+      
+      // Draw box
+      context.strokeRect(x, y, width, height)
+      
+      // Set styles for label
+      context.fillStyle = 'red'
+      context.font = 'bold 24px Arial'
+      
+      // Draw label with background
+      const label = `Person ${coord.human_id} (${Math.round(coord.score * 100)}%)`
+      const labelWidth = context.measureText(label).width
+      
+      // Draw label background
+      context.fillStyle = 'rgba(0, 0, 0, 0.8)'
+      context.fillRect(x, y - 30, labelWidth + 10, 30)
+      
+      // Draw label text
+      context.fillStyle = 'red'
+      context.fillText(
+        label,
+        x + 5,
+        y - 8
+      )
+      
+      // Restore the context state
+      context.restore()
+    })
+  }, [coordinates])
+
+  // Function to capture and send frame
+  const captureAndSendFrame = useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current || !isVideoOn) return
+
+    const canvas = canvasRef.current
+    const context = canvas.getContext('2d')
+    if (!context) return
+
+    // Get the container dimensions
+    const container = canvas.parentElement
+    if (!container) return
+
+    // Set canvas dimensions to match container
+    const rect = container.getBoundingClientRect()
+    canvas.width = rect.width
+    canvas.height = rect.height
+
+    // Draw the current frame on canvas
+    context.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height)
+
+    // Convert canvas to blob
+    try {
+      const blob = await new Promise<Blob>((resolve) => 
+        canvas.toBlob((blob) => resolve(blob!), 'image/jpeg')
+      )
+
+      // Send to backend
+      const formData = new FormData()
+      formData.append('file', blob)
+
+      await fetch('http://localhost:8000/localize-image/', {
+        method: 'POST',
+        body: formData,
+        mode: 'cors',
+        headers: {
+          'Accept': 'application/json',
+        },
+      })
+
+      // Fetch coordinates immediately after sending frame
+      await fetchCoordinates()
+      
+      // Draw boxes immediately after getting coordinates
+      drawBoundingBoxes()
+    } catch (error) {
+      console.error('Error sending frame:', error)
+    }
+  }, [isVideoOn, fetchCoordinates, drawBoundingBoxes])
+
+  // Set up interval for capture and continuous drawing
+  useEffect(() => {
+    if (!isVideoOn) return
+
+    // Initial capture
+    captureAndSendFrame()
+    
+    // Set up interval for subsequent captures
+    const captureInterval = setInterval(captureAndSendFrame, 1000)
+
+    // Set up a more frequent interval for redrawing boxes
+    const drawInterval = setInterval(() => {
+      if (coordinates.length > 0) {
+        drawBoundingBoxes()
+      }
+    }, 16) // ~60fps for smooth rendering
+
+    return () => {
+      clearInterval(captureInterval)
+      clearInterval(drawInterval)
+    }
+  }, [isVideoOn, captureAndSendFrame, drawBoundingBoxes, coordinates])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -291,7 +472,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="aspect-video bg-muted rounded-lg flex items-center justify-center overflow-hidden">
+              <div className="aspect-video bg-muted rounded-lg flex items-center justify-center overflow-hidden relative">
                 <video
                   ref={videoRef}
                   autoPlay
@@ -302,7 +483,26 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                     transform: 'scaleX(-1)',
                     width: '100%',
                     height: '100%',
-                    objectFit: 'cover'
+                    objectFit: 'cover',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    zIndex: 1
+                  }}
+                />
+                <canvas
+                  ref={canvasRef}
+                  style={{
+                    display: isVideoOn ? 'block' : 'none',
+                    transform: 'scaleX(-1)',
+                    width: '100%',
+                    height: '100%',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    zIndex: 2,
+                    pointerEvents: 'none',
+                    backgroundColor: 'transparent'
                   }}
                 />
                 {!isVideoOn && !isSharing && (

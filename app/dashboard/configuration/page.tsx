@@ -1,0 +1,255 @@
+"use client"
+
+import { useState } from "react"
+import { Settings, Target, Users, Clock, AlertTriangle, Zap } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
+import { Slider } from "@/components/ui/slider"
+import { Switch } from "@/components/ui/switch"
+
+export default function ConfigurationPage() {
+  // Scoring Settings
+  const [participationScore, setParticipationScore] = useState(5)
+  const [engagementScore, setEngagementScore] = useState(5)
+  
+  // Threshold Settings
+  const [attendanceThreshold, setAttendanceThreshold] = useState(70)
+  const [engagementThreshold, setEngagementThreshold] = useState(60)
+  const [atRiskThreshold, setAtRiskThreshold] = useState(60)
+  
+  // Deadzone Settings
+  // const [deadzones, setDeadzones] = useState([
+  //   { start: "12:00", end: "13:00", enabled: true },
+  //   { start: "18:00", end: "09:00", enabled: true },
+  // ])
+
+  return (
+    <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight">Class Configuration</h2>
+        <p className="text-muted-foreground">
+          Manage scoring rules, thresholds, and other class settings
+        </p>
+      </div>
+
+      <Tabs defaultValue="scoring" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="scoring" className="flex items-center gap-2">
+            <Target className="h-4 w-4" />
+            Scoring
+          </TabsTrigger>
+          <TabsTrigger value="thresholds" className="flex items-center gap-2">
+            <Settings className="h-4 w-4" />
+            Thresholds
+          </TabsTrigger>
+          <TabsTrigger value="deadzones" className="flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            Deadzones
+          </TabsTrigger>
+          <TabsTrigger value="advanced" className="flex items-center gap-2">
+            <Zap className="h-4 w-4" />
+            Advanced
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="scoring" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Scoring Rules</CardTitle>
+              <CardDescription>
+                Configure how points are awarded for different activities
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <Label>Score for Participation (Hand Raising)</Label>
+                    <span className="text-muted-foreground">{participationScore} points</span>
+                  </div>
+                  <Slider
+                    value={[participationScore]}
+                    onValueChange={([value]: number[]) => setParticipationScore(value)}
+                    min={1}
+                    max={10}
+                    step={1}
+                    className="w-full"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Points awarded each time a student raises their hand
+                  </p>
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <Label>Score for Engagement (per minute)</Label>
+                    <span className="text-muted-foreground">{engagementScore} points</span>
+                  </div>
+                  <Slider
+                    value={[engagementScore]}
+                    onValueChange={([value]: number[]) => setEngagementScore(value)}
+                    min={1}
+                    max={10}
+                    step={1}
+                    className="w-full"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Points awarded per minute of active engagement
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="thresholds" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Performance Thresholds</CardTitle>
+              <CardDescription>
+                Set minimum requirements for attendance and engagement
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <Label>Attendance Threshold</Label>
+                    <span className="text-muted-foreground">{attendanceThreshold}%</span>
+                  </div>
+                  <Slider
+                    value={[attendanceThreshold]}
+                    onValueChange={([value]: number[]) => setAttendanceThreshold(value)}
+                    min={30}
+                    max={90}
+                    step={5}
+                    className="w-full"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Minimum required attendance percentage
+                  </p>
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <Label>Engagement Threshold</Label>
+                    <span className="text-muted-foreground">{engagementThreshold}%</span>
+                  </div>
+                  <Slider
+                    value={[engagementThreshold]}
+                    onValueChange={([value]: number[]) => setEngagementThreshold(value)}
+                    min={30}
+                    max={90}
+                    step={5}
+                    className="w-full"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Minimum required engagement percentage
+                  </p>
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <Label>Students at Risk Threshold</Label>
+                    <span className="text-muted-foreground">{atRiskThreshold}%</span>
+                  </div>
+                  <Slider
+                    value={[atRiskThreshold]}
+                    onValueChange={([value]: number[]) => setAtRiskThreshold(value)}
+                    min={40}
+                    max={80}
+                    step={5}
+                    className="w-full"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Threshold below which students are considered at risk
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="deadzones" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Deadzone Configuration</CardTitle>
+              <CardDescription>
+                Configure where tracking should be paused
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <p className="text-muted-foreground text-center py-8">
+                Deadzone configuration is currently under development
+              </p>
+                
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="advanced" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Advanced Settings</CardTitle>
+              <CardDescription>
+                Additional configuration options for advanced users
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Automatic Risk Detection</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Automatically detect and flag students at risk
+                    </p>
+                  </div>
+                  <Switch defaultChecked />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Real-time Analytics</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Enable real-time performance analytics
+                    </p>
+                  </div>
+                  <Switch defaultChecked />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Engagement Notifications</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Send notifications for low engagement
+                    </p>
+                  </div>
+                  <Switch defaultChecked />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      <div className="flex justify-end gap-4">
+        <Button variant="outline">Reset to Defaults</Button>
+        <Button>Save Changes</Button>
+      </div>
+    </div>
+  )
+} 

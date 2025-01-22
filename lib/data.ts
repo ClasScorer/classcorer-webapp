@@ -1,3 +1,5 @@
+import { prisma } from "@/lib/prisma"
+
 export interface Student {
   id: string;
   name: string;
@@ -133,4 +135,11 @@ export function formatTime(time: string): string {
   const ampm = hour >= 12 ? 'PM' : 'AM';
   const hour12 = hour % 12 || 12;
   return `${hour12}:${minutes} ${ampm}`;
+}
+
+export async function getCurrentUser() {
+  const baseUrl = getBaseUrl()
+  const res = await fetch(`${baseUrl}/api/user`)
+  if (!res.ok) throw new Error("Failed to fetch user")
+  return res.json()
 } 

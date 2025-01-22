@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import { CalendarDays, GraduationCap, BookOpen, Bell, ArrowRight } from "lucide-react";
+import { CalendarDays, GraduationCap, BookOpen, Bell, ArrowRight, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -15,8 +15,8 @@ import { Button } from "@/components/ui/button";
 import { loadCourses, loadCalendarEvents, loadStudents, formatPercentage, formatTrend, type Course, type CalendarEvent, type Student } from "@/lib/data";
 import { Suspense } from "react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { getInitials } from "@/lib/utils";
-import { formatDate } from "@/lib/utils";
+import { getInitials, formatDate } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 export const metadata: Metadata = {
   title: "Professor Dashboard",
@@ -141,7 +141,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
+      <div className="flex-1 space-y-8 p-4 md:p-8 pt-6">
         {/* Welcome Section */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
@@ -160,7 +160,7 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {/* Quick Stats */}
+        {/* Quick Stats with Trends */}
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -168,17 +168,17 @@ export default async function DashboardPage() {
               <GraduationCap className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {totalStats.totalStudents}
+              <div className="flex items-baseline justify-between">
+                <div className="text-2xl font-bold">{totalStats.totalStudents}</div>
+                <Badge variant={totalStats.studentTrend === 'up' ? 'default' : 'secondary'} className="ml-2">
+                  {totalStats.studentTrend === 'up' ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                </Badge>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Across {courses.length} courses
-              </p>
-              <div className="mt-3">
-                <div className="text-xs text-muted-foreground">At Risk Students</div>
-                <div className="text-sm font-medium text-red-500">
-                  {totalStats.atRiskStudents} students need attention
-                </div>
+              <div className="mt-3 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                <span className="text-sm text-muted-foreground">
+                  {totalStats.atRiskStudents} at risk
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -189,8 +189,16 @@ export default async function DashboardPage() {
               <CalendarDays className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{totalStats.averageAttendance}%</div>
-              <Progress value={totalStats.averageAttendance} className="mt-2" />
+              <div className="flex items-baseline justify-between">
+                <div className="text-2xl font-bold">{totalStats.averageAttendance}%</div>
+                <Badge 
+                  variant={totalStats.averageAttendance >= 90 ? 'default' : 'secondary'} 
+                  className="ml-2"
+                >
+                  {totalStats.averageAttendance >= 90 ? 'On Track' : 'Below Target'}
+                </Badge>
+              </div>
+              <Progress value={totalStats.averageAttendance} className="mt-3" />
               <p className="text-xs text-muted-foreground mt-2">
                 Target: 90% attendance rate
               </p>
@@ -203,10 +211,18 @@ export default async function DashboardPage() {
               <BookOpen className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{totalStats.averagePassRate}%</div>
-              <Progress value={totalStats.averagePassRate} className="mt-2" />
+              <div className="flex items-baseline justify-between">
+                <div className="text-2xl font-bold">{totalStats.averagePassRate}%</div>
+                <Badge 
+                  variant={totalStats.averagePassRate >= 80 ? 'default' : 'destructive'} 
+                  className="ml-2"
+                >
+                  {totalStats.averagePassRate >= 80 ? 'Above Target' : 'Below Target'}
+                </Badge>
+              </div>
+              <Progress value={totalStats.averagePassRate} className="mt-3" />
               <p className="text-xs text-muted-foreground mt-2">
-                {totalStats.averagePassRate >= 80 ? 'Above target' : 'Below target'} (80% target)
+                Target: 80% pass rate
               </p>
             </CardContent>
           </Card>
@@ -214,17 +230,19 @@ export default async function DashboardPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Upcoming Deadlines</CardTitle>
-              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+              <Bell className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{totalStats.upcomingDeadlines.length}</div>
-              <div className="mt-2 space-y-1">
-                {totalStats.upcomingDeadlines.slice(0, 2).map((deadline) => (
-                  <div key={`${deadline.course}-${deadline.task}`} className="text-xs">
-                    <div className="font-medium">{deadline.course}: {deadline.task}</div>
-                    <div className="text-muted-foreground">
-                      Due: {deadline.dueDate} ({deadline.submissions}/{deadline.totalStudents} submitted)
+              <div className="space-y-3">
+                {totalStats.upcomingDeadlines.slice(0, 2).map((deadline, index) => (
+                  <div key={`${deadline.course}-${deadline.task}`} className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">{deadline.course}</p>
+                      <p className="text-xs text-muted-foreground">{deadline.task}</p>
                     </div>
+                    <Badge variant={index === 0 ? 'destructive' : 'secondary'}>
+                      {deadline.dueDate}
+                    </Badge>
                   </div>
                 ))}
               </div>
@@ -232,9 +250,9 @@ export default async function DashboardPage() {
           </Card>
         </div>
 
-        {/* Performance Graph */}
-        <div className="grid gap-4 md:grid-cols-7">
-          <Card className="col-span-5">
+        {/* Performance Overview and Summary */}
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-7">
+          <Card className="lg:col-span-5">
             <CardHeader>
               <CardTitle>Performance Overview</CardTitle>
               <CardDescription>Track submissions, scores, and attendance over time</CardDescription>
@@ -243,110 +261,129 @@ export default async function DashboardPage() {
               <PerformanceGraph courses={courseStats} />
             </CardContent>
           </Card>
-          <Card className="col-span-2">
+
+          <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle>Performance Summary</CardTitle>
               <CardDescription>Key metrics this week</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6">
               <div>
-                <div className="text-sm font-medium">Average Score</div>
-                <div className="text-2xl font-bold text-green-600">
-                  {Math.round(courseStats.reduce((sum, course) => sum + course.averageScore, 0) / courseStats.length)}%
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">Average Score</span>
+                  <Badge variant="outline">
+                    {Math.round(courseStats.reduce((sum, course) => sum + course.averageScore, 0) / courseStats.length)}%
+                  </Badge>
                 </div>
                 <Progress 
                   value={Math.round(courseStats.reduce((sum, course) => sum + course.averageScore, 0) / courseStats.length)} 
-                  className="mt-2"
+                  className="h-2"
                 />
               </div>
               <div>
-                <div className="text-sm font-medium">Submission Rate</div>
-                <div className="text-2xl font-bold text-blue-600">
-                  {Math.round(courseStats.reduce((sum, course) => sum + (course.submissions || 0), 0) / courseStats.length)}%
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">Submission Rate</span>
+                  <Badge variant="outline">
+                    {Math.round(courseStats.reduce((sum, course) => sum + (course.submissions || 0), 0) / courseStats.length)}%
+                  </Badge>
                 </div>
                 <Progress 
                   value={Math.round(courseStats.reduce((sum, course) => sum + (course.submissions || 0), 0) / courseStats.length)} 
-                  className="mt-2"
+                  className="h-2"
                 />
               </div>
               <div>
-                <div className="text-sm font-medium">Attendance Rate</div>
-                <div className="text-2xl font-bold text-rose-600">
-                  {Math.round(courseStats.reduce((sum, course) => sum + course.averageAttendance, 0) / courseStats.length)}%
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">Attendance Rate</span>
+                  <Badge variant="outline">
+                    {Math.round(courseStats.reduce((sum, course) => sum + course.averageAttendance, 0) / courseStats.length)}%
+                  </Badge>
                 </div>
                 <Progress 
                   value={Math.round(courseStats.reduce((sum, course) => sum + course.averageAttendance, 0) / courseStats.length)} 
-                  className="mt-2"
+                  className="h-2"
                 />
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Course Overview */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Course Overview</CardTitle>
-            <CardDescription>Quick overview of all your courses</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-              {courseStats.map((course) => (
-                <Link 
-                  key={course.id}
-                  href={`/dashboard/courses/${course.id}`}
-                  className="block"
-                >
-                  <div className="p-4 rounded-lg border bg-card hover:bg-accent transition-colors">
-                    <div className="flex justify-between items-start mb-3">
+        {/* Course Overview Grid */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold">Course Overview</h3>
+              <p className="text-sm text-muted-foreground">Performance metrics for all active courses</p>
+            </div>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/dashboard/courses">
+                View All Courses
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+            {courseStats.map((course) => (
+              <Link 
+                key={course.id}
+                href={`/dashboard/courses/${course.id}`}
+                className="block group"
+              >
+                <Card className="transition-all duration-200 hover:shadow-md group-hover:border-primary/20">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="font-semibold">{course.code}</h3>
-                        <p className="text-sm text-muted-foreground">{course.name}</p>
+                        <CardTitle className="text-lg">{course.code}</CardTitle>
+                        <CardDescription className="mt-1">{course.name}</CardDescription>
                       </div>
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        course.averageScore >= 80 ? 'bg-green-100 text-green-700' :
-                        course.averageScore >= 70 ? 'bg-blue-100 text-blue-700' :
-                        'bg-amber-100 text-amber-700'
-                      }`}>
+                      <Badge variant={
+                        course.averageScore >= 80 ? 'default' :
+                        course.averageScore >= 70 ? 'secondary' :
+                        'destructive'
+                      }>
                         {course.averageScore >= 80 ? 'Excellent' :
                          course.averageScore >= 70 ? 'Good' :
                          'Needs Attention'}
-                      </span>
+                      </Badge>
                     </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span>Progress</span>
-                        <span>{course.progress}%</span>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Progress</span>
+                          <span className="font-medium">{course.progress}%</span>
+                        </div>
+                        <Progress value={course.progress} className="h-1" />
                       </div>
-                      <Progress value={course.progress} />
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <div className="text-muted-foreground">Students</div>
-                          <div className="font-medium">{course.totalStudents}</div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">Students</p>
+                          <p className="text-sm font-medium">{course.totalStudents}</p>
                         </div>
-                        <div>
-                          <div className="text-muted-foreground">At Risk</div>
-                          <div className="font-medium text-red-500">{course.atRiskCount}</div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">At Risk</p>
+                          <p className="text-sm font-medium text-red-500">{course.atRiskCount}</p>
                         </div>
-                        <div>
-                          <div className="text-muted-foreground">Attendance</div>
-                          <div className="font-medium">{course.averageAttendance}%</div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">Attendance</p>
+                          <p className="text-sm font-medium">{course.averageAttendance}%</p>
                         </div>
-                        <div>
-                          <div className="text-muted-foreground">Average</div>
-                          <div className="font-medium">{course.averageScore}%</div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">Average</p>
+                          <p className="text-sm font-medium">{course.averageScore}%</p>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </div>
 
-        {/* Recent Announcements and Student Leaderboard side by side */}
-        <div className="grid gap-4 md:grid-cols-2">
+        {/* Recent Announcements and Student Leaderboard */}
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -354,26 +391,32 @@ export default async function DashboardPage() {
                   <CardTitle>Recent Announcements</CardTitle>
                   <CardDescription>Latest updates from your courses</CardDescription>
                 </div>
-                <Button variant="outline" size="sm">
-                  View All
-                  <ArrowRight className="ml-2 h-4 w-4" />
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/dashboard/announcements">
+                    View All
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
                 </Button>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {totalStats.recentAnnouncements.map((event) => (
-                  <div key={event.course} className="flex items-start gap-4">
+              <div className="space-y-6">
+                {totalStats.recentAnnouncements.map((announcement, index) => (
+                  <div key={`${announcement.course}-${index}`} className="flex items-start gap-4">
                     <Avatar>
-                      <AvatarImage src={event.course?.instructor?.avatar} />
-                      <AvatarFallback>
-                        {getInitials(event.course?.instructor?.name || 'Instructor')}
+                      <AvatarFallback className="bg-primary/10">
+                        {getInitials(announcement.course)}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium leading-none">{event.title}</p>
+                    <div className="space-y-1 flex-1">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">{announcement.title}</p>
+                        <Badge variant={announcement.priority === 'high' ? 'destructive' : 'secondary'}>
+                          {announcement.priority}
+                        </Badge>
+                      </div>
                       <p className="text-sm text-muted-foreground">
-                        {event.course?.name} • {formatDate(event.date)}
+                        {announcement.course} • {formatDate(announcement.date)}
                       </p>
                     </div>
                   </div>
@@ -398,7 +441,9 @@ export default async function DashboardPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <StudentLeaderboard />
+              <Suspense fallback={<div>Loading leaderboard...</div>}>
+                <StudentLeaderboard />
+              </Suspense>
             </CardContent>
           </Card>
         </div>

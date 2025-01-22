@@ -25,7 +25,7 @@ import {
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import { type Course, loadCourses } from "@/lib/data"
+import { type Course, loadCourses, getCurrentUser } from "@/lib/data"
 
 interface NavItem {
   title: string
@@ -47,9 +47,12 @@ interface NavLabel {
 
 type NavData = {
   user: {
+    id: string
     name: string
     email: string
-    avatar: string
+    avatar: string | null
+    role: string
+    department: string | null
   }
   teams: Array<{
     name: string
@@ -59,107 +62,124 @@ type NavData = {
   navMain: Array<NavItem | NavLabel>
 }
 
-// Navigation data structure
-const baseData: NavData = {
-  user: {
-    name: "Professor Smith",
-    email: "smith@university.edu",
-    avatar: "/avatars/professor.jpg",
+// Base navigation data structure
+const baseNavMain: Array<NavItem | NavLabel> = [
+  {
+    title: "Dashboard",
+    url: "/dashboard",
+    icon: LayoutDashboard,
+    isActive: true,
   },
-  teams: [
-    {
-      name: "Computer Science",
-      logo: School,
-      plan: "Department",
-    },
-  ],
-  navMain: [
-    {
-      title: "Dashboard",
-      url: "/dashboard",
-      icon: LayoutDashboard,
-      isActive: true,
-    },
-    {
-      title: "Courses",
-      url: "/dashboard/courses",
-      icon: BookOpen,
-      items: [], // Will be populated from CSV
-    },
-    {
-      type: 'label' as const,
-      title: 'Teaching',
-    },
-    {
-      title: "Calendar",
-      url: "/dashboard/calendar",
-      icon: Calendar,
-    },
-    {
-      title: "Students",
-      url: "/dashboard/students",
-      icon: GraduationCap,
-    },
-    {
-      title: "Lectures",
-      url: "/dashboard/lectures",
-      icon: Library,
-    },
-    {
-      title: "Assignments",
-      url: "/dashboard/assignments",
-      icon: ListChecks,
-    },
-    {
-      title: "Leaderboard",
-      url: "/dashboard/leaderboard",
-      icon: Trophy,
-    },
-    {
-      type: 'label' as const,
-      title: 'Settings',
-    },
-    {
-      title: "Configuration",
-      url: "/dashboard/configuration",
-      icon: Settings2,
-    },
-  ],
-}
+  {
+    title: "Courses",
+    url: "/dashboard/courses",
+    icon: BookOpen,
+    items: [], // Will be populated from database
+  },
+  {
+    type: 'label' as const,
+    title: 'Teaching',
+  },
+  {
+    title: "Calendar",
+    url: "/dashboard/calendar",
+    icon: Calendar,
+  },
+  {
+    title: "Students",
+    url: "/dashboard/students",
+    icon: GraduationCap,
+  },
+  {
+    title: "Lectures",
+    url: "/dashboard/lectures",
+    icon: Library,
+  },
+  {
+    title: "Assignments",
+    url: "/dashboard/assignments",
+    icon: ListChecks,
+  },
+  {
+    title: "Leaderboard",
+    url: "/dashboard/leaderboard",
+    icon: Trophy,
+  },
+  {
+    type: 'label' as const,
+    title: 'Settings',
+  },
+  {
+    title: "Configuration",
+    url: "/dashboard/configuration",
+    icon: Settings2,
+  },
+]
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const [navData, setNavData] = useState<NavData>(baseData)
+export function AppSidebar() {
+  const [navData, setNavData] = useState<NavData>({
+    user: {
+      id: '',
+      name: '',
+      email: '',
+      avatar: null,
+      role: '',
+      department: null,
+    },
+    teams: [
+      {
+        name: "Computer Science",
+        logo: School,
+        plan: "Department",
+      },
+    ],
+    navMain: baseNavMain,
+  })
 
   useEffect(() => {
-    async function fetchCourses() {
-      try {
-        const courses = await loadCourses()
-        setNavData(prev => {
-          const updatedNavMain = prev.navMain.map(item => {
-            if ('title' in item && item.title === "Courses") {
-              return {
-                ...item,
-                items: courses.map(course => ({
-                  title: course.name,
-                  url: `/dashboard/courses/${course.id}`,
-                  icon: BookOpen,
-                  status: course.status,
-                }))
-              }
+    async function loadData() {
+      const [courses, user] = await Promise.all([
+        loadCourses(),
+        getCurrentUser(),
+      ])
+
+      if (user) {
+        // Update courses in navigation with course IDs
+        const updatedNavMain = navData.navMain.map(item => {
+          if ('url' in item && item.url === '/dashboard/courses') {
+            return {
+              ...item,
+              items: courses.map(course => ({
+                title: course.code || `Course ${course.id}`, // Show course code or ID
+                url: `/dashboard/courses/${course.id}`,
+                icon: BookOpen,
+                status: course.status,
+              })),
             }
-            return item
-          })
-          return { ...prev, navMain: updatedNavMain }
+          }
+          return item
         })
-      } catch (error) {
-        console.error('Error loading courses:', error)
+
+        setNavData({
+          user,
+          teams: [
+            {
+              name: user.department || "Department",
+              logo: School,
+              plan: "Department",
+            },
+          ],
+          navMain: updatedNavMain,
+        })
       }
     }
-    fetchCourses()
+
+    loadData()
   }, [])
 
   return (
-    <Sidebar collapsible="icon" {...props}>
+    <Sidebar>
+      <SidebarRail />
       <SidebarHeader>
         <TeamSwitcher teams={navData.teams} />
       </SidebarHeader>
@@ -169,7 +189,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarFooter>
         <NavUser user={navData.user} />
       </SidebarFooter>
-      <SidebarRail />
     </Sidebar>
   )
 }

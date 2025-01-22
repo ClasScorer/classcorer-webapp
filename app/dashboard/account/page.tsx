@@ -24,24 +24,39 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Bell, Lock, User, Mail, Shield, Moon, Sun, Globe } from "lucide-react"
+import { getCurrentUser } from "@/lib/data"
+import { getInitials } from "@/lib/utils"
+import { TimezoneSelect } from "@/components/ui/timezone-select"
 
-// Mock user data
-const user = {
-  name: "Professor Smith",
-  email: "smith@university.edu",
-  avatar: "/avatars/professor.png",
-  role: "Professor",
-  department: "Computer Science",
-  joinDate: "January 2020",
-  timezone: "Pacific Time (PT)",
-  language: "English",
+const languages = [
+  { value: "en", label: "English" },
+]
+
+interface User {
+  id: string
+  name: string
+  email: string
+  avatar: string | null
+  role: string
+  department: string | null
+  joinDate: Date
+  timezone: string | null
+  language: string | null
 }
 
 export default function AccountPage() {
   const searchParams = useSearchParams()
   const { theme, setTheme } = useTheme()
+  const [user, setUser] = useState<User | null>(null)
   const [notifications, setNotifications] = useState({
     email: true,
     desktop: true,
@@ -49,8 +64,20 @@ export default function AccountPage() {
     reports: true,
   })
 
+  useEffect(() => {
+    async function loadUser() {
+      const userData = await getCurrentUser()
+      setUser(userData)
+    }
+    loadUser()
+  }, [])
+
   // Set initial tab based on URL parameter
   const initialTab = searchParams.get("tab") || "profile"
+
+  if (!user) {
+    return null // or loading state
+  }
 
   return (
     <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
@@ -90,8 +117,8 @@ export default function AccountPage() {
               <div className="flex flex-col gap-6 md:flex-row md:items-start">
                 <div className="flex flex-col items-center gap-4">
                   <Avatar className="h-32 w-32">
-                    <AvatarImage src={user.avatar} alt={user.name} />
-                    <AvatarFallback>{user.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                    <AvatarImage src={user.avatar || undefined} alt={user.name} />
+                    <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                   </Avatar>
                   <Button variant="outline">Change Avatar</Button>
                 </div>
@@ -103,15 +130,15 @@ export default function AccountPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="email">Email</Label>
-                      <Input id="email" type="email" defaultValue={user.email} />
+                      <Input id="email" type="email" value={user.email} disabled />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="department">Department</Label>
-                      <Input id="department" defaultValue={user.department} />
+                      <Input id="department" value={user.department || ''} disabled />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="role">Role</Label>
-                      <Input id="role" defaultValue={user.role} disabled />
+                      <Input id="role" value={user.role} disabled />
                     </div>
                   </div>
                 </div>
@@ -133,12 +160,26 @@ export default function AccountPage() {
                   <Label htmlFor="language">Language</Label>
                   <div className="flex items-center gap-2">
                     <Globe className="h-4 w-4 text-muted-foreground" />
-                    <Input id="language" defaultValue={user.language} />
+                    <Select defaultValue={user.language || 'en'}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select language" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {languages.map((language) => (
+                          <SelectItem key={language.value} value={language.value}>
+                            {language.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="timezone">Timezone</Label>
-                  <Input id="timezone" defaultValue={user.timezone} />
+                  <TimezoneSelect 
+                    value={user.timezone || undefined}
+                    onValueChange={(value) => console.log(value)}
+                  />
                 </div>
               </div>
               <div className="flex items-center justify-between">
@@ -279,7 +320,7 @@ export default function AccountPage() {
       </Tabs>
 
       <div className="flex justify-end gap-4">
-        <Button variant="outline">Cancel</Button>
+        <Button variant="outline">Reset to Defaults</Button>
         <Button>Save Changes</Button>
       </div>
     </div>
