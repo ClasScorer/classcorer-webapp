@@ -15,6 +15,8 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { AddStudentDialog } from "./add-student-dialog"
+import { toast } from "sonner"
 
 // Remove metadata since this is now a client component
 // export const metadata: Metadata = {
@@ -73,6 +75,34 @@ export default function StudentsPage() {
   const averageAttendance = Math.round(students.reduce((acc, s) => acc + s.attendance, 0) / totalStudents);
   const activeCourses = new Set(students.map(s => s.courseId)).size;
 
+  const handleAddStudent = async (studentData: {
+    name: string
+    email: string
+    courseId: string
+  }) => {
+    try {
+      const response = await fetch("/api/students", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(studentData),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Failed to add student")
+      }
+
+      const newStudent = await response.json()
+      setStudents(prev => [...prev, newStudent])
+      toast.success("Student added successfully")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to add student")
+      throw error // Re-throw to be handled by the dialog
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -94,10 +124,7 @@ export default function StudentsPage() {
             <Filter className="mr-2 h-4 w-4" />
             Filter
           </Button>
-          <Button size="sm">
-            <Plus className="mr-2 h-4 w-4" />
-            Add Student
-          </Button>
+          <AddStudentDialog courses={courses} onAddStudent={handleAddStudent} />
         </div>
       </div>
 
