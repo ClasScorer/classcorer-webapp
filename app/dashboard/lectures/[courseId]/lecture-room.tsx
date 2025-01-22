@@ -9,6 +9,7 @@ import { Camera, Presentation, Mic, MicOff, Video, VideoOff, Share2, MessageSqua
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Course, Student } from "@/lib/data"
+import { toast } from "sonner"
 
 // Add Google API types
 interface GoogleSlide {
@@ -102,6 +103,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   // New state for coordinates
   const [coordinates, setCoordinates] = useState<Coordinate[]>([])
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [displayCoords, setDisplayCoords] = useState<{ [key: number]: { x: number, y: number, width: number, height: number } }>({})
 
   // Handle presentation URL change
   const handlePresentationUrl = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -268,7 +270,31 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     }
   }, [])
 
-  // Function to draw bounding boxes
+  // Function to check if a point is inside a box
+  const isPointInBox = (x: number, y: number, box: { x: number, y: number, width: number, height: number }) => {
+    return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height
+  }
+
+  // Handle click on video overlay
+  const handleVideoClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const overlay = e.currentTarget
+    const rect = overlay.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+
+    // Check each person's bounding box
+    for (const [personId, box] of Object.entries(displayCoords)) {
+      if (isPointInBox(x, y, box)) {
+        toast.success(`Clicked on Person ${personId}`, {
+          position: "top-center",
+          duration: 2000,
+        })
+        return
+      }
+    }
+  }
+
+  // Modify drawBoundingBoxes to store display coordinates
   const drawBoundingBoxes = useCallback(() => {
     if (!canvasRef.current || !coordinates.length || !videoRef.current) {
       return
@@ -311,6 +337,9 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     // Clear the entire canvas
     context.clearRect(0, 0, canvas.width, canvas.height)
     
+    // Reset display coordinates
+    const newDisplayCoords: { [key: number]: { x: number, y: number, width: number, height: number } } = {}
+    
     // Draw bounding boxes
     coordinates.forEach(coord => {
       // Skip objects with less than 70% confidence
@@ -328,6 +357,9 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       const y = coord.y_min * scaleY + offsetY
       const width = (coord.x_max - coord.x_min) * scaleX
       const height = (coord.y_max - coord.y_min) * scaleY
+
+      // Store display coordinates for click detection
+      newDisplayCoords[coord.human_id] = { x, y, width, height }
       
       // Set styles for box
       context.strokeStyle = '#2196F3' // Material Blue
@@ -359,6 +391,9 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       // Restore the context state
       context.restore()
     })
+
+    // Update display coordinates
+    setDisplayCoords(newDisplayCoords)
   }, [coordinates])
 
   // Function to capture and send frame
@@ -530,6 +565,20 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                     zIndex: 2,
                     pointerEvents: 'none',
                     backgroundColor: 'transparent'
+                  }}
+                />
+                {/* Clickable overlay */}
+                <div
+                  onClick={handleVideoClick}
+                  style={{
+                    display: isVideoOn ? 'block' : 'none',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    zIndex: 3,
+                    cursor: 'pointer'
                   }}
                 />
                 {!isVideoOn && !isSharing && (
