@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
 import { prisma } from "@/lib/prisma"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // For now, get the first user as current user
-    // In a real app, this would use the session
+    // Get the auth token from the cookie
+    const cookieStore = await cookies()
+    const authToken = cookieStore.get('authToken')?.value
+    
+    if (!authToken) {
+      return new NextResponse("Unauthorized", { status: 401 })
+    }
+    
+    // In a real app, you would verify the token and get the user ID from it
+    // For now, we'll just get the first user
     const user = await prisma.user.findFirst({
       select: {
         id: true,

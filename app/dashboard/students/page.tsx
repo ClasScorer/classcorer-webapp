@@ -2,7 +2,7 @@
 
 import { Metadata } from "next";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Search, Plus, Filter, ArrowUpRight, GraduationCap, BookOpen, Clock, Trophy, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,9 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AddStudentDialog } from "./add-student-dialog"
 import { toast } from "sonner"
+import { api } from "@/lib/api";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { StudentCard } from "./student-card"
 
 // Remove metadata since this is now a client component
 // export const metadata: Metadata = {
@@ -26,6 +29,33 @@ import { toast } from "sonner"
 
 const ITEMS_PER_PAGE = 5;
 
+interface Course {
+  id: string;
+  name: string;
+  code: string;
+}
+
+interface Student {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  score: number;
+  level: number;
+  average: number;
+  attendance: number;
+  submissions: number;
+  lastSubmission?: string;
+  status: string;
+  trend: string;
+  badges: string[];
+  progress: number;
+  streak: number;
+  grade: string;
+  course: Course;
+  courseId: string;
+}
+
 interface StudentWithUI extends Student {
   isExpanded?: boolean;
 }
@@ -33,41 +63,53 @@ interface StudentWithUI extends Student {
 export default function StudentsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [students, setStudents] = useState<Student[]>([]);
+  const [students, setStudents] = useState<StudentWithUI[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [isAddingStudent, setIsAddingStudent] = useState(false);
+  const [activeTab, setActiveTab] = useState("all");
 
-  // Load students data
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const [studentsData, coursesData] = await Promise.all([
-          loadStudents(),
-          loadCourses()
-        ]);
-        setStudents(studentsData);
-        setCourses(coursesData);
-      } catch (error) {
-        console.error('Error loading data:', error);
-      } finally {
-        setLoading(false);
-      }
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      // Use the new API client
+      const studentsData = await api.students.getAll();
+      const coursesData = await api.courses.getAll();
+      
+      setStudents(studentsData.map((student: Student) => ({
+        ...student,
+        isExpanded: false,
+      })));
+      setCourses(coursesData);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     fetchData();
   }, []);
 
   // Filter students based on search query
-  const filteredStudents = students.filter(student =>
-    student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    student.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    courses.find(c => c.id === student.courseId)?.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredStudents = students.filter((student) => {
+    const matchesSearch = student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      student.email.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    if (activeTab === "all") return matchesSearch;
+    if (activeTab === "at-risk") return matchesSearch && student.status === "At Risk";
+    if (activeTab === "good") return matchesSearch && student.status === "Good";
+    return matchesSearch;
+  });
 
-  // Calculate pagination
+  // Pagination
   const totalPages = Math.ceil(filteredStudents.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedStudents = filteredStudents.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  const paginatedStudents = filteredStudents.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
   // Stats calculations
   const totalStudents = students.length;
@@ -76,32 +118,21 @@ export default function StudentsPage() {
   const activeCourses = new Set(students.map(s => s.courseId)).size;
 
   const handleAddStudent = async (studentData: {
-    name: string
-    email: string
-    courseId: string
+    name: string;
+    email: string;
+    courseId: string;
   }) => {
     try {
-      const response = await fetch("/api/students", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(studentData),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Failed to add student")
-      }
-
-      const newStudent = await response.json()
-      setStudents(prev => [...prev, newStudent])
-      toast.success("Student added successfully")
+      // Use the new API client
+      await api.students.create(studentData);
+      fetchData();
+      setIsAddingStudent(false);
+      toast.success("Student added successfully");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to add student")
-      throw error // Re-throw to be handled by the dialog
+      console.error("Error adding student:", error);
+      toast.error("Failed to add student");
     }
-  }
+  };
 
   if (loading) {
     return (
@@ -300,7 +331,7 @@ export default function StudentsPage() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
-            Showing {startIndex + 1} to {Math.min(startIndex + ITEMS_PER_PAGE, filteredStudents.length)} of {filteredStudents.length} students
+            Showing {currentPage * ITEMS_PER_PAGE - ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, filteredStudents.length)} of {filteredStudents.length} students
           </div>
           <div className="flex items-center gap-2">
             <Button

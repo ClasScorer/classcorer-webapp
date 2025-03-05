@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { api } from "@/lib/api"
 
 export interface Student {
   id: string;
@@ -75,24 +76,30 @@ function getBaseUrl() {
 
 // Data loading functions
 export async function loadStudents(): Promise<Student[]> {
-  const baseUrl = getBaseUrl();
-  const res = await fetch(`${baseUrl}/api/students`);
-  if (!res.ok) throw new Error("Failed to fetch students");
-  return res.json();
+  try {
+    return await api.students.getAll();
+  } catch (error) {
+    console.error("Failed to fetch students:", error);
+    return [];
+  }
 }
 
 export async function loadCourses(): Promise<Course[]> {
-  const baseUrl = getBaseUrl();
-  const res = await fetch(`${baseUrl}/api/courses`);
-  if (!res.ok) throw new Error("Failed to fetch courses");
-  return res.json();
+  try {
+    return await api.courses.getAll();
+  } catch (error) {
+    console.error("Failed to fetch courses:", error);
+    return [];
+  }
 }
 
 export async function loadCalendarEvents(): Promise<Event[]> {
-  const baseUrl = getBaseUrl();
-  const res = await fetch(`${baseUrl}/api/events`);
-  if (!res.ok) throw new Error("Failed to fetch events");
-  return res.json();
+  try {
+    return await api.events.getAll();
+  } catch (error) {
+    console.error("Failed to fetch events:", error);
+    return [];
+  }
 }
 
 export async function getStudentsByCourse(courseId: string): Promise<Student[]> {
@@ -138,8 +145,10 @@ export function formatTime(time: string): string {
 }
 
 export async function getCurrentUser() {
-  const baseUrl = getBaseUrl()
-  const res = await fetch(`${baseUrl}/api/user`)
-  if (!res.ok) throw new Error("Failed to fetch user")
-  return res.json()
+  try {
+    return await api.auth.getCurrentUser();
+  } catch (error) {
+    console.error("Failed to fetch user:", error);
+    return null;
+  }
 } 

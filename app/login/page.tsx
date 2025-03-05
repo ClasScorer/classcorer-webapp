@@ -1,15 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { api } from "@/lib/api";
+import { useSession } from "@/app/providers";
+import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { update } = useSession();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -23,21 +26,25 @@ export default function LoginPage() {
     const password = formData.get("password") as string;
 
     try {
-      const result = await signIn("credentials", {
-        email,
-        password,
-        redirect: false,
+      // Use the Django API for login
+      const response = await api.auth.login(email, password);
+      
+      // The token is already stored in localStorage by the api.auth.login function
+      
+      // Store the token in a cookie for server-side authentication
+      // Use SameSite=Lax to ensure the cookie is sent with navigation requests
+      document.cookie = `authToken=${response.token}; path=/; max-age=2592000; SameSite=Lax`; // 30 days
+      
+      // Update the session with user data
+      await update({
+        ...response.user,
+        token: response.token
       });
-
-      if (result?.error) {
-        setError("Invalid email or password");
-        return;
-      }
 
       router.push("/dashboard");
       router.refresh();
     } catch (error) {
-      setError("An error occurred. Please try again.");
+      setError("Invalid email or password");
     } finally {
       setIsLoading(false);
     }
@@ -85,6 +92,13 @@ export default function LoginPage() {
             >
               {isLoading ? "Signing in..." : "Sign in"}
             </Button>
+            
+            <div className="text-center text-sm">
+              Don't have an account?{" "}
+              <Link href="/signup" className="text-primary hover:underline">
+                Sign up
+              </Link>
+            </div>
           </form>
         </CardContent>
       </Card>

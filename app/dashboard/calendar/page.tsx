@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useState, useEffect } from "react";
 import type { CalendarEvent, EventType } from "./utils";
 import type { Course } from "@/lib/data";
+import { api } from "@/lib/api";
 
 export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([])
@@ -18,10 +19,11 @@ export default function CalendarPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [eventsData, coursesData] = await Promise.all([
-          loadCalendarEvents(),
-          loadCourses()
-        ])
+        setLoading(true);
+        // Use the new API client
+        const eventsData = await api.events.getAll();
+        const coursesData = await api.courses.getAll();
+        
         // Convert Event to CalendarEvent
         const calendarEvents: CalendarEvent[] = eventsData.map((event, index) => {
           // Ensure we have a valid numeric ID
@@ -46,7 +48,7 @@ export default function CalendarPage() {
         setEvents(calendarEvents)
         setCourses(coursesData)
       } catch (error) {
-        console.error('Error loading data:', error)
+        console.error("Error loading data:", error);
         toast.error('Failed to load calendar data')
       } finally {
         setLoading(false)
@@ -64,44 +66,17 @@ export default function CalendarPage() {
     courseId?: string
   }) => {
     try {
-      const response = await fetch("/api/events", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...eventData,
-          date: eventData.date.toISOString(),
-        }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Failed to add event")
-      }
-
-      const newEvent = await response.json()
-      // Convert the new event to CalendarEvent format
-      const calendarEvent: CalendarEvent = {
-        id: (() => {
-          if (newEvent.id) {
-            const parsedId = parseInt(newEvent.id);
-            return isNaN(parsedId) ? Date.now() : parsedId;
-          }
-          return Date.now();
-        })(),
-        title: newEvent.title,
-        date: new Date(newEvent.date).toISOString().split('T')[0],
-        time: newEvent.time || "",
-        type: newEvent.type as EventType,
-        description: newEvent.description || "",
-        course: newEvent.course?.code,
-      }
-      setEvents(prev => [...prev, calendarEvent])
-      toast.success("Event added successfully")
+      // Use the new API client
+      await api.events.create({
+        ...eventData,
+        date: eventData.date.toISOString(),
+      });
+      
+      loadData();
+      toast.success("Event added successfully");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to add event")
-      throw error
+      console.error("Error adding event:", error);
+      toast.error("Failed to add event");
     }
   }
 

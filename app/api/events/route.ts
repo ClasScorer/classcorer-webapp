@@ -1,8 +1,17 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { prisma } from '@/lib/prisma'
 
 export async function GET() {
   try {
+    // Get the auth token from the cookie
+    const cookieStore = await cookies()
+    const authToken = cookieStore.get('authToken')?.value
+    
+    if (!authToken) {
+      return new NextResponse("Unauthorized", { status: 401 })
+    }
+    
     const events = await prisma.event.findMany({
       include: {
         course: {
@@ -26,6 +35,14 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    // Get the auth token from the cookie
+    const cookieStore = await cookies()
+    const authToken = cookieStore.get('authToken')?.value
+    
+    if (!authToken) {
+      return new NextResponse("Unauthorized", { status: 401 })
+    }
+    
     const body = await req.json()
     const { title, date, time, type, description, courseId } = body
 
