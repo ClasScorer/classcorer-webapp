@@ -73,9 +73,9 @@ export function NavMain({
                 >
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton tooltip={item.title}>
-                      {item.icon && <item.icon />}
-                      <span>{item.title}</span>
-                      <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                      {item.icon && <item.icon className="h-5 w-5 shrink-0 group-data-[collapsible=icon]:mx-auto" />}
+                      <span className="truncate group-data-[collapsible=icon]:hidden">{item.title}</span>
+                      <ChevronRight className="ml-auto h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-[collapsible=icon]:hidden" />
                     </SidebarMenuButton>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
@@ -84,8 +84,8 @@ export function NavMain({
                         <SidebarMenuSubItem key={subItem.title}>
                           <SidebarMenuSubButton asChild>
                             <a href={subItem.url}>
-                              {subItem.icon && <subItem.icon />}
-                              <span>{subItem.title}</span>
+                              {subItem.icon && <subItem.icon className="h-5 w-5 shrink-0 group-data-[collapsible=icon]:mx-auto" />}
+                              <span className="truncate group-data-[collapsible=icon]:hidden">{subItem.title}</span>
                             </a>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
@@ -100,8 +100,8 @@ export function NavMain({
                   tooltip={item.title}
                 >
                   <a href={item.url}>
-                    {item.icon && <item.icon />}
-                    <span>{item.title}</span>
+                    {item.icon && <item.icon className="h-5 w-5 shrink-0 group-data-[collapsible=icon]:mx-auto" />}
+                    <span className="truncate group-data-[collapsible=icon]:hidden">{item.title}</span>
                   </a>
                 </SidebarMenuButton>
               )}

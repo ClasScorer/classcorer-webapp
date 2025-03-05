@@ -178,7 +178,7 @@ export function AppSidebar() {
   }, [])
 
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon">
       <SidebarRail />
       <SidebarHeader>
         <TeamSwitcher teams={navData.teams} />
