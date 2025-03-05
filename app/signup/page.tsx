@@ -1,28 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import Link from "next/link";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
 
-export default function LoginPage() {
+export default function SignupPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [registered, setRegistered] = useState(false);
-
-  useEffect(() => {
-    // Check if user was redirected from signup page
-    if (searchParams?.get("registered") === "true") {
-      setRegistered(true);
-    }
-  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -30,23 +19,40 @@ export default function LoginPage() {
     setIsLoading(true);
 
     const formData = new FormData(e.currentTarget);
+    const name = formData.get("name") as string;
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
+    const confirmPassword = formData.get("confirmPassword") as string;
+
+    // Basic validation
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      setIsLoading(false);
+      return;
+    }
 
     try {
-      const result = await signIn("credentials", {
-        email,
-        password,
-        redirect: false,
+      const response = await fetch("/api/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+        }),
       });
 
-      if (result?.error) {
-        setError("Invalid email or password");
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Something went wrong");
         return;
       }
 
-      router.push("/dashboard");
-      router.refresh();
+      // Redirect to login page
+      router.push("/login?registered=true");
     } catch (error) {
       setError("An error occurred. Please try again.");
     } finally {
@@ -58,19 +64,23 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
+          <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
           <CardDescription>
-            Sign in to your account to continue
+            Fill in your details below to create your account
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {registered && (
-            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-md flex items-center text-green-700">
-              <CheckCircle2 className="h-5 w-5 mr-2 flex-shrink-0" />
-              <p className="text-sm">Account created successfully! Please sign in.</p>
-            </div>
-          )}
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Full Name</Label>
+              <Input
+                id="name"
+                name="name"
+                type="text"
+                placeholder="Professor Smith"
+                required
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -88,12 +98,22 @@ export default function LoginPage() {
                 name="password"
                 type="password"
                 required
+                minLength={6}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <Input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                required
+                minLength={6}
               />
             </div>
             {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-md flex items-center text-red-700">
-                <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" />
-                <p className="text-sm">{error}</p>
+              <div className="text-sm text-red-500">
+                {error}
               </div>
             )}
             <Button
@@ -101,15 +121,15 @@ export default function LoginPage() {
               className="w-full"
               disabled={isLoading}
             >
-              {isLoading ? "Signing in..." : "Sign in"}
+              {isLoading ? "Creating account..." : "Create account"}
             </Button>
           </form>
         </CardContent>
         <CardFooter className="flex justify-center">
           <div className="text-sm text-center">
-            Don't have an account?{" "}
-            <Link href="/signup" className="text-primary hover:underline">
-              Sign up
+            Already have an account?{" "}
+            <Link href="/login" className="text-primary hover:underline">
+              Sign in
             </Link>
           </div>
         </CardFooter>
