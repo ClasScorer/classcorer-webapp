@@ -11,6 +11,16 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Course, Student } from "@/lib/data"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 // Add Google API types
 interface GoogleSlide {
@@ -185,6 +195,17 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   const [lectureId, setLectureId] = useState<string | null>(null)
   const [attendanceData, setAttendanceData] = useState<{[studentId: string]: {status: string, joinTime: Date, lastSeen: Date}}>({})
   const [isLoading, setIsLoading] = useState(false)
+  
+  // Add state for lecture duration tracking
+  const [lectureStartTime, setLectureStartTime] = useState<Date | null>(null)
+  const [elapsedTime, setElapsedTime] = useState(0)
+  const [durationMinutes, setDurationMinutes] = useState(60) // Default 60 minutes
+  const [durationInterval, setDurationInterval] = useState<NodeJS.Timeout | null>(null)
+
+  // Add state for delete confirmation dialog
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [lectureToDelete, setLectureToDelete] = useState<string | null>(null)
+  const [isDeletingLecture, setIsDeletingLecture] = useState(false)
 
   // Refs for media elements
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -215,6 +236,8 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   const startNewLecture = async () => {
     try {
       setIsLoading(true);
+      const startTime = new Date();
+      
       // Create the lecture record in the database
       const response = await fetch("/api/lectures", {
         method: "POST",
@@ -222,10 +245,10 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          title: `Live Lecture - ${new Date().toLocaleString()}`,
+          title: `Live Lecture - ${startTime.toLocaleString()}`,
           description: "Automatically created from live lecture session",
-          date: new Date().toISOString(),
-          duration: 60, // Default duration in minutes
+          date: startTime.toISOString(),
+          duration: durationMinutes, // Use the configured duration
           courseId: course.id,
         }),
       });
@@ -238,7 +261,22 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
 
       const data = await response.json();
       setLectureId(data.id);
-      setLectureStarted(true); // Set lecture started to true
+      setLectureStarted(true);
+      setLectureStartTime(startTime);
+      
+      // Start duration timer
+      const interval = setInterval(() => {
+        const now = new Date();
+        const elapsed = Math.floor((now.getTime() - startTime.getTime()) / 1000 / 60); // minutes
+        setElapsedTime(elapsed);
+        
+        // Check if duration exceeded
+        if (elapsed >= durationMinutes) {
+          toast.warning("Lecture duration reached. Consider ending the lecture.");
+        }
+      }, 60000); // Update every minute
+      
+      setDurationInterval(interval);
       
       toast.success("Lecture started successfully");
       
@@ -291,6 +329,45 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       toast.error("Failed to save attendance records");
       return false;
     }
+  };
+
+  // Add function to delete a lecture
+  const deleteLecture = async (lectureId: string) => {
+    if (!lectureId) return;
+    
+    try {
+      setIsDeletingLecture(true);
+      
+      // Call the API to delete the lecture
+      const response = await fetch(`/api/lectures/${lectureId}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to delete lecture");
+      }
+      
+      toast.success("Lecture deleted successfully");
+      
+      // Navigate back to course page
+      router.push(`/dashboard/lectures/${course.id}`);
+    } catch (error) {
+      console.error("Error deleting lecture:", error);
+      toast.error(`Failed to delete lecture: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsDeletingLecture(false);
+      setIsDeleteDialogOpen(false);
+    }
+  };
+  
+  // Function to show delete confirmation
+  const confirmDeleteLecture = (lectureId: string) => {
+    setLectureToDelete(lectureId);
+    setIsDeleteDialogOpen(true);
   };
 
   // Enhanced function to handle Google Slides integration
@@ -598,10 +675,16 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     toast.info("Face detection stopped");
   };
 
-  // Function to end lecture
+  // Function to end lecture - updated to clear the duration timer
   const endLecture = async () => {
     // Stop detection
     stopFaceDetection();
+    
+    // Clear duration timer
+    if (durationInterval) {
+      clearInterval(durationInterval);
+      setDurationInterval(null);
+    }
     
     // Save attendance records
     if (lectureId) {
@@ -616,6 +699,8 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     setLectureId(null);
     setAttendanceData({});
     setFaceData(null);
+    setElapsedTime(0);
+    setLectureStartTime(null);
   };
 
   // Draw face boxes on the display canvas
@@ -885,6 +970,13 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     }
   }, [faceData, students]);
 
+  // Format duration for display
+  const formatDuration = (minutes: number) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours > 0 ? `${hours}h ` : ''}${mins}m`;
+  };
+
   // Return JSX for the component with enhanced slides and detection info
   return (
     <div className="flex flex-col h-full">
@@ -896,20 +988,34 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
               <CardTitle className="text-lg">Controls</CardTitle>
               <CardDescription className="text-xs">
                 {lectureStarted 
-                  ? "Lecture in progress"
+                  ? `Lecture in progress: ${formatDuration(elapsedTime)} / ${formatDuration(durationMinutes)}`
                   : "Start a lecture to begin"
                 }
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {!lectureStarted ? (
-                <Button 
-                  onClick={startNewLecture} 
-                  className="w-full" 
-                  disabled={isLoading}
-                >
-                  {isLoading ? "Starting..." : "Start Lecture"}
-                </Button>
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <label htmlFor="duration" className="text-sm">Lecture Duration (minutes)</label>
+                    <Input 
+                      id="duration"
+                      type="number" 
+                      min="5"
+                      max="240"
+                      value={durationMinutes}
+                      onChange={e => setDurationMinutes(Math.max(5, parseInt(e.target.value) || 60))}
+                      className="w-full"
+                    />
+                  </div>
+                  <Button 
+                    onClick={startNewLecture} 
+                    className="w-full" 
+                    disabled={isLoading}
+                  >
+                    {isLoading ? "Starting..." : "Start Lecture"}
+                  </Button>
+                </div>
               ) : (
                 <div className="flex flex-col gap-2">
                   <div className="flex flex-col gap-2">
@@ -957,11 +1063,21 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                     <Button
                       variant="destructive"
                       onClick={endLecture}
-                      className="w-full"
+                      className="w-full mb-2"
                       disabled={isLoading}
                     >
                       <Square className="mr-2 h-4 w-4" />
                       Stop Lecture
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      onClick={() => confirmDeleteLecture(lectureId!)}
+                      className="w-full"
+                      disabled={isLoading || isDeletingLecture || !lectureId}
+                    >
+                      <X className="mr-2 h-4 w-4" />
+                      Delete Lecture
                     </Button>
                   </div>
                 </div>
@@ -1387,6 +1503,29 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
           </CardContent>
         </Card>
       )}
+      
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Lecture</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this lecture? This action cannot be undone.
+              All associated attendance, engagement data, and student metrics will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingLecture}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => lectureToDelete && deleteLecture(lectureToDelete)}
+              disabled={isDeletingLecture}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeletingLecture ? "Deleting..." : "Delete Lecture"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 } 

@@ -70,4 +70,75 @@ export async function PATCH(request: Request, { params }: Params) {
     console.error("[LECTURE_STATUS_PATCH]", error);
     return new NextResponse("Internal error", { status: 500 });
   }
+}
+
+// DELETE - Remove a lecture and related data
+export async function DELETE(request: Request, { params }: Params) {
+  try {
+    const session = await getServerSession();
+    const { lectureId } = params;
+    
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    
+    if (!lectureId) {
+      return NextResponse.json(
+        { error: "Missing lecture ID" },
+        { status: 400 }
+      );
+    }
+    
+    // Get the lecture to check permissions
+    const lecture = await prisma.lecture.findUnique({
+      where: { id: lectureId },
+      include: {
+        course: {
+          select: {
+            instructorId: true,
+          },
+        },
+      },
+    });
+    
+    if (!lecture) {
+      return NextResponse.json({ error: "Lecture not found" }, { status: 404 });
+    }
+    
+    // Check if the user is the instructor of the course
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+    
+    if (!user || user.id !== lecture.course.instructorId) {
+      return NextResponse.json(
+        { error: "You don't have permission to delete this lecture" },
+        { status: 403 }
+      );
+    }
+    
+    // Delete all related records first (attendance, engagement data, etc.)
+    // We use a transaction to ensure all deletions succeed or none do
+    await prisma.$transaction([
+      // Delete attendance records
+      prisma.attendance.deleteMany({
+        where: { lectureId },
+      }),
+      
+      // Delete engagement data
+      prisma.engagement.deleteMany({
+        where: { lectureId },
+      }),
+      
+      // Delete the lecture itself
+      prisma.lecture.delete({
+        where: { id: lectureId },
+      }),
+    ]);
+    
+    return NextResponse.json({ success: true, message: "Lecture deleted successfully" });
+  } catch (error) {
+    console.error("[LECTURE_DELETE]", error);
+    return NextResponse.json({ error: "Failed to delete lecture" }, { status: 500 });
+  }
 } 

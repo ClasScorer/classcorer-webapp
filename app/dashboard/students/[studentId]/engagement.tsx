@@ -44,7 +44,7 @@ const COLORS = ['#4ade80', '#f87171', '#facc15', '#60a5fa']
 
 export default function StudentEngagement({ student }: StudentEngagementProps) {
   const [engagementData, setEngagementData] = useState<EngagementData[]>([])
-  const [lectures, setLectures] = useState<{[key: string]: {title: string, date: string}>[]>([])
+  const [lectures, setLectures] = useState<Array<{id: string, title: string, date: string}>>([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedTab, setSelectedTab] = useState('overview')
 

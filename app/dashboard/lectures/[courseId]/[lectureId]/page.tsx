@@ -3,20 +3,32 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { format } from "date-fns";
-import { ArrowLeft, Download, FileText, Users } from "lucide-react";
+import { ArrowLeft, Download, FileText, Users, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { 
   getCourseById, 
   getStudentsByCourse, 
   fetchLectureById,
   fetchAttendance,
-  updateBulkAttendance
+  updateBulkAttendance,
+  getLectureDetails,
+  getEngagementDataForLecture
 } from "@/lib/data";
 
 export default function LectureDetailPage() {
@@ -31,6 +43,8 @@ export default function LectureDetailPage() {
   const [attendanceData, setAttendanceData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeletingLecture, setIsDeletingLecture] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -131,6 +145,36 @@ export default function LectureDetailPage() {
     }
   };
 
+  const deleteLecture = async () => {
+    try {
+      setIsDeletingLecture(true);
+      
+      // Call the API to delete the lecture
+      const response = await fetch(`/api/lectures/${lectureId}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to delete lecture");
+      }
+      
+      toast.success("Lecture deleted successfully");
+      
+      // Navigate back to course page
+      router.push(`/dashboard/lectures/${courseId}`);
+    } catch (error) {
+      console.error("Error deleting lecture:", error);
+      toast.error(`Failed to delete lecture: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsDeletingLecture(false);
+      setIsDeleteDialogOpen(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6 p-6">
@@ -149,6 +193,8 @@ export default function LectureDetailPage() {
   const attendanceRate = attendance.present + attendance.late + attendance.absent > 0 
     ? Math.round(((attendance.present + attendance.late) / (attendance.present + attendance.late + attendance.absent)) * 100)
     : 0;
+
+  const engagementData = lecture?.engagementData || [];
 
   return (
     <div className="space-y-6 p-6">
@@ -333,6 +379,35 @@ export default function LectureDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <div className="flex items-center gap-2 mt-4">
+        <Button variant="destructive" size="sm" onClick={() => setIsDeleteDialogOpen(true)}>
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete Lecture
+        </Button>
+      </div>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Lecture</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this lecture? This action cannot be undone.
+              All associated attendance, engagement data, and student metrics will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingLecture}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={deleteLecture}
+              disabled={isDeletingLecture}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeletingLecture ? "Deleting..." : "Delete Lecture"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 } 
