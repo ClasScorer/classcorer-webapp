@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Camera, Presentation, Mic, MicOff, Video, VideoOff, Share2, MessageSquare, X, Play, Square, Save } from "lucide-react"
+import { Camera, Presentation, Mic, MicOff, Video, VideoOff, Share2, MessageSquare, X, Play, Square, Save, ScreenShare, Send, Ghost, Bug } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Course, Student } from "@/lib/data"
@@ -184,6 +184,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   const [lectureStarted, setLectureStarted] = useState(false)
   const [lectureId, setLectureId] = useState<string | null>(null)
   const [attendanceData, setAttendanceData] = useState<{[studentId: string]: {status: string, joinTime: Date, lastSeen: Date}}>({})
+  const [isLoading, setIsLoading] = useState(false)
 
   // Refs for media elements
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -210,9 +211,11 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   const [detectionHistory, setDetectionHistory] = useState<EnhancedFaceDetectionResponse[]>([])
   const [historyView, setHistoryView] = useState(false)
 
-  // Function to create a new lecture record
+  // Modified function to start a new lecture and activate detection
   const startNewLecture = async () => {
     try {
+      setIsLoading(true);
+      // Create the lecture record in the database
       const response = await fetch("/api/lectures", {
         method: "POST",
         headers: {
@@ -228,16 +231,29 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to create lecture record");
+        const errorData = await response.json();
+        console.error("API error:", errorData);
+        throw new Error(errorData.error || "Failed to create lecture record");
       }
 
       const data = await response.json();
       setLectureId(data.id);
+      setLectureStarted(true); // Set lecture started to true
+      
+      toast.success("Lecture started successfully");
+      
+      // Start detection if video is on
+      if (isVideoOn) {
+        startFaceDetection(data.id);
+      }
+      
       return data.id;
     } catch (error) {
       console.error("Error creating lecture:", error);
-      toast.error("Failed to create lecture record");
+      toast.error(`Failed to create lecture: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return null;
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -442,6 +458,9 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       
       const data: FaceDetectionResponse = await response.json();
       
+      // Update the face data state
+      setFaceData(data as EnhancedFaceDetectionResponse);
+      
       // Also send the data to our engagement API to store in the database
       saveEngagementData(data);
       
@@ -546,53 +565,35 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     setAttendanceData(updatedAttendance);
   };
 
-  // Function to start face detection
-  const startFaceDetection = async () => {
+  // Start face detection with the given lecture ID
+  const startFaceDetection = (lectureId: string) => {
     if (!isVideoOn) {
-      toast.error("Please turn on your camera first");
+      toast.error("Camera must be on to start detection");
       return;
     }
     
-    // Create a new lecture if one doesn't exist
-    const newLectureId = lectureId || await startNewLecture();
-    if (!newLectureId) {
-      toast.error("Failed to start lecture");
-      return;
-    }
-    
-    setLectureStarted(true);
     setIsDetecting(true);
     
-    // Clear any existing interval
-    if (detectionInterval) {
-      clearInterval(detectionInterval);
-    }
-    
-    // Set up interval for face detection (every 5 seconds)
+    // Create an interval to capture frames and send to API
     const interval = setInterval(async () => {
       try {
         const frameBlob = await captureVideoFrame();
-        const detectionResults = await sendFrameToAPI(frameBlob);
-        
-        if (detectionResults) {
-          processFaceDetectionResults(detectionResults);
-        }
+        await sendFrameToAPI(frameBlob);
       } catch (error) {
-        console.error("Error in face detection cycle:", error);
+        console.error("Error in detection cycle:", error);
       }
-    }, 5000); // Every 5 seconds
+    }, 5000); // Capture every 5 seconds
     
     setDetectionInterval(interval);
     toast.success("Face detection started");
   };
-
-  // Function to stop face detection
+  
+  // Stop face detection
   const stopFaceDetection = () => {
     if (detectionInterval) {
       clearInterval(detectionInterval);
       setDetectionInterval(null);
     }
-    
     setIsDetecting(false);
     toast.info("Face detection stopped");
   };
@@ -774,99 +775,135 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     }
   }
 
+  // Add simulation function for debugging
+  const simulateDetection = () => {
+    if (!lectureId) {
+      toast.error("No active lecture. Start a lecture first.");
+      return;
+    }
+    
+    // Create mock detection data
+    const mockData: EnhancedFaceDetectionResponse = {
+      lecture_id: lectureId,
+      timestamp: new Date().toISOString(),
+      total_faces: Math.min(students.length, 5),
+      faces: students.slice(0, 5).map((student, index) => ({
+        person_id: student.id.toString(),
+        recognition_status: Math.random() > 0.2 ? "known" : "new",
+        attention_status: Math.random() > 0.3 ? "focused" : "unfocused",
+        hand_raising_status: {
+          is_hand_raised: Math.random() > 0.8,
+          confidence: Math.random() * 0.5 + 0.5,
+          hand_position: { x: Math.random() * 0.8, y: Math.random() * 0.8 }
+        },
+        confidence: Math.random() * 0.5 + 0.5,
+        bounding_box: {
+          x: Math.random() * 0.5,
+          y: Math.random() * 0.5,
+          width: Math.random() * 0.2 + 0.1,
+          height: Math.random() * 0.2 + 0.1
+        },
+        name: student.name,
+        attentionMetrics: {
+          focusScore: Math.round(Math.random() * 100),
+          focusDuration: Math.round(Math.random() * 60),
+          distractionCount: Math.round(Math.random() * 5),
+          engagementLevel: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low'
+        }
+      })),
+      summary: {
+        new_faces: Math.floor(Math.random() * 2),
+        known_faces: Math.floor(Math.random() * 4) + 1,
+        focused_faces: Math.floor(Math.random() * 3) + 2,
+        unfocused_faces: Math.floor(Math.random() * 2),
+        hands_raised: Math.floor(Math.random() * 2)
+      },
+      classEngagement: Math.random() * 80 + 20
+    };
+    
+    // Update state with mock data
+    setFaceData(mockData);
+    
+    // Also send to engagement API
+    saveEngagementData(mockData);
+    
+    toast.success("Simulated detection data generated");
+  };
+
   // Return JSX for the component with enhanced slides and detection info
   return (
-    <div className="flex flex-col gap-4">
-      {/* Control Panel */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Lecture Controls</CardTitle>
-          <CardDescription>
-            {lectureStarted 
-              ? `Live lecture in progress - ${Object.keys(attendanceData).length} student(s) detected` 
-              : "Start a live lecture to track student attendance and engagement"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex flex-col gap-2">
-              <div className="flex gap-2">
-                <Button 
-                  variant={isVideoOn ? "default" : "outline"}
-                  onClick={toggleVideo}
-                >
-                  {isVideoOn ? <VideoOff className="mr-2 h-4 w-4" /> : <Video className="mr-2 h-4 w-4" />}
-                  {isVideoOn ? "Disable Camera" : "Enable Camera"}
-                </Button>
-                
-                <Button 
-                  variant={isAudioOn ? "default" : "outline"}
-                  onClick={toggleAudio}
-                >
-                  {isAudioOn ? <MicOff className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
-                  {isAudioOn ? "Mute Mic" : "Unmute Mic"}
-                </Button>
-              </div>
-              
-              <div className="flex gap-2">
-                <Button 
-                  variant={isSharing ? "default" : "outline"}
-                  onClick={toggleScreenShare}
-                  disabled={lectureStarted && isDetecting}
-                >
-                  <Share2 className="mr-2 h-4 w-4" />
-                  {isSharing ? "Stop Sharing" : "Share Screen"}
-                </Button>
-                
-                <Button 
-                  variant={isChatOpen ? "default" : "outline"}
-                  onClick={() => setIsChatOpen(!isChatOpen)}
-                >
-                  <MessageSquare className="mr-2 h-4 w-4" />
-                  {isChatOpen ? "Close Chat" : "Open Chat"}
-                </Button>
-              </div>
-            </div>
-            
-            <div className="flex flex-col gap-2">
+    <div className="flex flex-col h-full">
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
+        {/* Left panel - Controls and video */}
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Lecture Controls</CardTitle>
+              <CardDescription>
+                {lectureStarted 
+                  ? "Lecture in progress. Control your media and detection settings."
+                  : "Start a lecture to begin tracking attendance and engagement."
+                }
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
               {!lectureStarted ? (
                 <Button 
-                  variant="default" 
-                  className="bg-green-600 hover:bg-green-700"
-                  onClick={startFaceDetection}
-                  disabled={!isVideoOn}
+                  onClick={startNewLecture} 
+                  className="w-full" 
+                  disabled={isLoading}
                 >
-                  <Play className="mr-2 h-4 w-4" />
-                  Start Lecture with Face Detection
+                  {isLoading ? "Starting..." : "Start Lecture"}
                 </Button>
               ) : (
-                <>
-                  <Button 
-                    variant={isDetecting ? "default" : "outline"}
-                    onClick={isDetecting ? stopFaceDetection : startFaceDetection}
-                    disabled={!isVideoOn}
-                  >
-                    {isDetecting ? <Square className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
-                    {isDetecting ? "Pause Detection" : "Resume Detection"}
-                  </Button>
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <Button 
+                      variant={isVideoOn ? "default" : "secondary"} 
+                      onClick={toggleVideo}
+                      className="flex-1"
+                    >
+                      {isVideoOn ? <VideoOff className="mr-2 h-4 w-4" /> : <Video className="mr-2 h-4 w-4" />}
+                      {isVideoOn ? "Turn Off Camera" : "Turn On Camera"}
+                    </Button>
+                    
+                    <Button 
+                      variant={isAudioOn ? "default" : "secondary"} 
+                      onClick={toggleAudio}
+                      className="flex-1"
+                    >
+                      {isAudioOn ? <MicOff className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
+                      {isAudioOn ? "Mute" : "Unmute"}
+                    </Button>
+                  </div>
                   
-                  <Button 
-                    variant="destructive"
-                    onClick={endLecture}
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    End Lecture & Save
-                  </Button>
-                </>
+                  <div className="flex flex-wrap gap-2">
+                    {isVideoOn && (
+                      <Button
+                        variant={isDetecting ? "destructive" : "default"}
+                        onClick={isDetecting ? stopFaceDetection : () => startFaceDetection(lectureId!)}
+                        className="flex-1"
+                      >
+                        {isDetecting ? "Stop Detection" : "Start Detection"}
+                      </Button>
+                    )}
+                    
+                    <Button
+                      variant="outline"
+                      onClick={simulateDetection}
+                      className="flex-1"
+                    >
+                      <Bug className="mr-2 h-4 w-4" />
+                      Simulate Detection
+                    </Button>
+                  </div>
+                </div>
               )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      
-      {/* Video and Detection Results */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Video Display */}
+            </CardContent>
+          </Card>
+        </div>
+        
+        {/* Video and Detection Results */}
         <Card>
           <CardHeader>
             <CardTitle>Camera Feed</CardTitle>

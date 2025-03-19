@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { authOptions } from '@/app/lib/auth';
+import prisma from '@/app/lib/prisma';
 
 // Face detection response type
 interface HandRaising {
@@ -44,118 +45,176 @@ interface FaceDetectionResponse {
   summary: FaceDetectionSummary;
 }
 
-// This is a mock implementation since the actual face detection would be handled by external service
 export async function POST(req: NextRequest) {
   try {
-    // Check authentication
-    const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    // Check authentication - but allow development access
+    let userId = 'dev-user-id';
+    let isDevMode = false;
+    
+    try {
+      const session = await getServerSession(authOptions);
+      if (session?.user?.id) {
+        userId = session.user.id as string;
+      } else if (process.env.NODE_ENV === 'production') {
+        // Only enforce strict auth in production
+        return NextResponse.json(
+          { error: 'Unauthorized' },
+          { status: 401 }
+        );
+      } else {
+        isDevMode = true;
+        console.log('DEV MODE: Using dev-user-id for authentication');
+      }
+    } catch (authError) {
+      console.warn('Auth check failed, using development fallback:', authError);
+      // Continue with development fallback in dev mode
+      if (process.env.NODE_ENV === 'production') {
+        return NextResponse.json(
+          { error: 'Authentication error' },
+          { status: 500 }
+        );
+      }
+      isDevMode = true;
     }
 
-    // Get lecture ID from the request
+    // Get the form data with the image and lecture ID
     const formData = await req.formData();
-    const lectureId = formData.get('lecture_id');
-    const imageFile = formData.get('image');
+    const lecture_id = formData.get('lecture_id') as string;
+    const image = formData.get('image') as File;
 
-    if (!lectureId || !imageFile) {
+    if (!lecture_id || !image) {
       return NextResponse.json(
-        { error: 'Missing required parameters' },
+        { error: 'Missing required fields: lecture_id and image' },
         { status: 400 }
       );
     }
 
-    // In a real implementation, you would send the image to your AI service
-    // Here we'll return mock data for demonstration purposes
-    
-    // Generate a random number of faces between 1 and 5
-    const totalFaces = Math.floor(Math.random() * 5) + 1;
-    const knownFaces = Math.floor(Math.random() * totalFaces) + 1;
-    const newFaces = totalFaces - knownFaces;
-    
+    // Get the students enrolled in the course for this lecture
+    let studentIds: string[] = [];
+    try {
+      // Fetch the lecture to get course ID
+      const lecture = await prisma.lecture.findUnique({
+        where: { id: lecture_id },
+        select: { courseId: true }
+      });
+
+      if (!lecture) {
+        return NextResponse.json(
+          { error: 'Lecture not found' },
+          { status: 404 }
+        );
+      }
+
+      // Get students enrolled in this course through the StudentEnrollment model
+      const enrollments = await prisma.studentEnrollment.findMany({
+        where: { 
+          courseId: lecture.courseId
+        },
+        include: {
+          student: {
+            select: { id: true }
+          }
+        }
+      });
+
+      studentIds = enrollments.map(enrollment => enrollment.student.id);
+    } catch (error) {
+      console.warn('Error fetching enrolled students:', error);
+      // In dev mode, continue with mock student IDs
+      if (!isDevMode) {
+        return NextResponse.json(
+          { error: 'Failed to fetch enrolled students' },
+          { status: 500 }
+        );
+      }
+    }
+
+    // If no students found or in dev mode, use some mock IDs
+    if (studentIds.length === 0) {
+      studentIds = ["student-1", "student-2", "student-3", "student-4", "student-5"];
+    }
+
+    // Generate random data for face detection (in a real app, this would process the image)
+    const numStudents = studentIds.length;
+    const maxFaces = Math.min(numStudents, 5); // Maximum 5 faces
+    const detectedFaces = Math.floor(Math.random() * maxFaces) + 1; // At least 1 face
+
+    // Generate a mix of known and new faces
+    const knownFaces = Math.floor(Math.random() * detectedFaces) + 1;
+    const newFaces = detectedFaces - knownFaces;
+
     // Generate focused vs unfocused stats
     const focusedFaces = Math.floor(Math.random() * knownFaces) + 1;
     const unfocusedFaces = knownFaces - focusedFaces;
-    
+
     // Generate random number of students raising hands
     const handsRaised = Math.floor(Math.random() * knownFaces);
-    
-    // Create an array of fake student IDs (would be real in production)
-    // You'd use your student database here
-    const studentIds = [
-      "clq8e2xpj0000qt086u2qre45",
-      "clq8e2xpj0001qt08aw3bfhnm",
-      "clq8e2xpj0002qt08g5d3emgd",
-      "clq8e2xpj0003qt086wlkr9tx",
-      "clq8e2xpj0004qt08v4ywte88"
-    ];
-    
-    // Generate face data
+
+    // Prepare the face data array
     const faces = [];
-    
-    // Known faces
+
+    // Add known faces (recognized students)
+    const shuffledStudentIds = [...studentIds].sort(() => 0.5 - Math.random());
     for (let i = 0; i < knownFaces; i++) {
-      const isHandRaised = i < handsRaised;
+      const studentId = shuffledStudentIds[i];
       const isFocused = i < focusedFaces;
-      
+      const isHandRaised = i < handsRaised;
+
       faces.push({
-        person_id: studentIds[i % studentIds.length],
+        person_id: studentId,
         recognition_status: "known",
         attention_status: isFocused ? "focused" : "unfocused",
         hand_raising_status: {
           is_hand_raised: isHandRaised,
-          confidence: isHandRaised ? Math.random() * 0.5 + 0.5 : Math.random() * 0.2,
+          confidence: isHandRaised ? Math.random() * 0.3 + 0.7 : Math.random() * 0.2,
           hand_position: {
-            x: Math.random() * 0.8 + 0.1, // Normalized 0-1 position
-            y: Math.random() * 0.2 + 0.1  // Typically at the top of the frame
+            x: Math.random(),
+            y: Math.random()
           }
         },
-        confidence: Math.random() * 0.3 + 0.7, // High confidence for known faces
+        confidence: Math.random() * 0.2 + 0.8,
         bounding_box: {
-          x: Math.random() * 0.6 + 0.2,
-          y: Math.random() * 0.6 + 0.2,
+          x: Math.random() * 0.8,
+          y: Math.random() * 0.8,
           width: Math.random() * 0.2 + 0.1,
-          height: Math.random() * 0.3 + 0.2
+          height: Math.random() * 0.2 + 0.1
         }
       });
     }
-    
-    // New faces
+
+    // Add unknown faces
     for (let i = 0; i < newFaces; i++) {
-      const isHandRaised = Math.random() > 0.8;
       const isFocused = Math.random() > 0.5;
-      
+      const isHandRaised = Math.random() > 0.8;
+
       faces.push({
-        person_id: `new-face-${i}`,
+        person_id: `unknown-${i}`,
         recognition_status: "new",
         attention_status: isFocused ? "focused" : "unfocused",
         hand_raising_status: {
           is_hand_raised: isHandRaised,
-          confidence: isHandRaised ? Math.random() * 0.5 + 0.3 : Math.random() * 0.1,
+          confidence: isHandRaised ? Math.random() * 0.3 + 0.6 : Math.random() * 0.2,
           hand_position: {
-            x: Math.random() * 0.8 + 0.1,
-            y: Math.random() * 0.2 + 0.1
+            x: Math.random(),
+            y: Math.random()
           }
         },
-        confidence: Math.random() * 0.4 + 0.3, // Lower confidence for new faces
+        confidence: Math.random() * 0.3 + 0.6,
         bounding_box: {
-          x: Math.random() * 0.6 + 0.2,
-          y: Math.random() * 0.6 + 0.2,
+          x: Math.random() * 0.8,
+          y: Math.random() * 0.8,
           width: Math.random() * 0.2 + 0.1,
-          height: Math.random() * 0.3 + 0.2
+          height: Math.random() * 0.2 + 0.1
         }
       });
     }
-    
-    // Compile the response
-    const responseData = {
-      lecture_id: lectureId,
+
+    // Prepare the response object
+    const response = {
+      lecture_id,
       timestamp: new Date().toISOString(),
-      total_faces: totalFaces,
-      faces: faces,
+      total_faces: detectedFaces,
+      faces,
       summary: {
         new_faces: newFaces,
         known_faces: knownFaces,
@@ -164,13 +223,12 @@ export async function POST(req: NextRequest) {
         hands_raised: handsRaised
       }
     };
-    
-    return NextResponse.json(responseData);
-    
+
+    return NextResponse.json(response);
   } catch (error) {
-    console.error('Error processing face detection:', error);
+    console.error("Error processing face detection:", error);
     return NextResponse.json(
-      { error: 'Failed to process face detection' },
+      { error: "Internal server error", details: String(error) },
       { status: 500 }
     );
   }

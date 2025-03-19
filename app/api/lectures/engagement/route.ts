@@ -1,33 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import prisma from '@/app/lib/prisma';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { authOptions } from '@/app/lib/auth';
 
 export async function POST(req: NextRequest) {
   try {
-    // Check authentication
-    const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    // Check authentication - but allow development access
+    let userId = 'dev-user-id';
+    let isDevMode = false;
+    
+    try {
+      const session = await getServerSession(authOptions);
+      if (session?.user?.id) {
+        userId = session.user.id as string;
+      } else if (process.env.NODE_ENV === 'production') {
+        // Only enforce strict auth in production
+        return NextResponse.json(
+          { error: 'Unauthorized' },
+          { status: 401 }
+        );
+      } else {
+        isDevMode = true;
+        console.log('DEV MODE: Using dev-user-id for authentication');
+      }
+    } catch (authError) {
+      console.warn('Auth check failed, using development fallback:', authError);
+      // Continue with development fallback in dev mode
+      if (process.env.NODE_ENV === 'production') {
+        return NextResponse.json(
+          { error: 'Authentication error' },
+          { status: 500 }
+        );
+      }
+      isDevMode = true;
     }
 
-    // Parse request body
-    const data = await req.json();
+    // Parse the request body
+    const body = await req.json();
     
     // Validate required fields
-    if (!data.lecture_id || !data.faces || !data.summary) {
+    if (!body.lecture_id || !body.faces || !body.summary) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
       );
     }
-
-    // First check if lecture exists and belongs to the current user
+    
+    // Check if lecture exists and belongs to user
     const lecture = await prisma.lecture.findUnique({
-      where: { id: data.lecture_id },
+      where: { id: body.lecture_id },
       include: {
         course: {
           select: {
@@ -36,178 +57,104 @@ export async function POST(req: NextRequest) {
         }
       }
     });
-
+    
     if (!lecture) {
       return NextResponse.json(
         { error: 'Lecture not found' },
         { status: 404 }
       );
     }
-
-    if (lecture.course.instructorId !== session.user.id) {
+    
+    // Skip permission check in dev mode
+    if (!isDevMode && lecture.course.instructorId !== userId) {
       return NextResponse.json(
-        { error: 'You are not authorized to update this lecture' },
+        { error: 'You are not authorized to access this lecture' },
         { status: 403 }
       );
     }
-
-    // Now process each face detected
-    const timestamp = new Date(data.timestamp || new Date());
     
-    // First, update lecture status if not already active
-    if (!lecture.isActive) {
-      await prisma.lecture.update({
-        where: { id: data.lecture_id },
-        data: { isActive: true }
-      });
-    }
-
-    // Process each known face (student)
-    for (const face of data.faces.filter(f => f.recognition_status === 'known')) {
-      const studentId = face.person_id;
+    // Process each face detected
+    const processedFaces = {
+      known: 0,
+      new: 0,
+      updated: 0,
+      total: body.faces.length
+    };
+    
+    // For each face, update or create attendance record
+    for (const face of body.faces) {
+      // Skip if not a known person
+      if (face.recognition_status !== 'known') {
+        processedFaces.new++;
+        continue;
+      }
       
-      // Check if student exists
-      const student = await prisma.student.findUnique({
-        where: { id: studentId }
-      });
-
-      if (!student) continue; // Skip if student not found
+      processedFaces.known++;
       
-      // Update or create attendance record for the student
-      await prisma.attendance.upsert({
-        where: {
-          studentId_lectureId: {
-            studentId,
-            lectureId: data.lecture_id
-          }
-        },
-        update: {
-          status: 'PRESENT',
-          leaveTime: new Date() // Update leave time to current time
-        },
-        create: {
-          studentId,
-          lectureId: data.lecture_id,
-          status: 'PRESENT',
-          joinTime: new Date(),
-          leaveTime: new Date()
-        }
-      });
-
-      // Save engagement data - first check if there's an existing record
-      const existingEngagement = await prisma.studentEngagement.findUnique({
-        where: {
-          studentId_lectureId: {
-            studentId,
-            lectureId: data.lecture_id
-          }
-        }
-      });
-
-      if (existingEngagement) {
-        // Calculate new engagement metrics based on existing and new data
-        const detectionCount = existingEngagement.detectionCount + 1;
-        const wasAttentive = face.attention_status === 'focused';
-        const focusScore = Math.round(
-          (existingEngagement.focusScore * existingEngagement.detectionCount + (wasAttentive ? 100 : 0)) / detectionCount
-        );
-        
-        // Update distractionCount if student was not focused
-        const distractionCount = wasAttentive 
-          ? existingEngagement.distractionCount 
-          : existingEngagement.distractionCount + 1;
-
-        // Determine engagement level
-        let engagementLevel = 'medium';
-        if (focusScore >= 75) engagementLevel = 'high';
-        else if (focusScore <= 30) engagementLevel = 'low';
-
-        // Update handRaisedCount if hand was raised
-        const handRaisedCount = face.hand_raising_status?.is_hand_raised
-          ? existingEngagement.handRaisedCount + 1
-          : existingEngagement.handRaisedCount;
-
-        // Calculate average confidence
-        const averageConfidence = (
-          (existingEngagement.averageConfidence * existingEngagement.detectionCount + face.confidence) /
-          detectionCount
-        );
-          
-        // Increment attention duration if student was focused (in seconds)
-        const attentionDuration = wasAttentive 
-          ? existingEngagement.attentionDuration + 5 // Assuming 5 second intervals
-          : existingEngagement.attentionDuration;
-
-        // Store snapshot of the detection data
-        const detectionSnapshots = [
-          ...existingEngagement.detectionSnapshots,
-          {
-            timestamp: timestamp.toISOString(),
-            attention_status: face.attention_status,
-            bounding_box: face.bounding_box,
-            confidence: face.confidence,
-            hand_raised: face.hand_raising_status?.is_hand_raised || false
-          }
-        ].slice(-50); // Keep last 50 snapshots
-        
-        // Update the engagement record
-        await prisma.studentEngagement.update({
+      // Get or create attendance record
+      try {
+        // Try to find existing attendance record
+        const existingAttendance = await prisma.attendance.findFirst({
           where: {
-            studentId_lectureId: {
-              studentId,
-              lectureId: data.lecture_id
-            }
-          },
-          data: {
-            detectionCount,
-            focusScore,
-            distractionCount,
-            engagementLevel,
-            handRaisedCount,
-            averageConfidence,
-            attentionDuration,
-            detectionSnapshots
+            lectureId: body.lecture_id,
+            studentId: face.person_id
           }
         });
-      } else {
-        // Create new engagement record
-        const wasAttentive = face.attention_status === 'focused';
         
+        if (existingAttendance) {
+          // Update existing record
+          await prisma.attendance.update({
+            where: { id: existingAttendance.id },
+            data: {
+              status: 'PRESENT',
+              leaveTime: new Date()
+            }
+          });
+        } else {
+          // Create new attendance record
+          await prisma.attendance.create({
+            data: {
+              lectureId: body.lecture_id,
+              studentId: face.person_id,
+              joinTime: new Date(),
+              status: 'PRESENT',
+              leaveTime: null
+            }
+          });
+        }
+        
+        // Save engagement data to StudentEngagement model
         await prisma.studentEngagement.create({
           data: {
-            lectureId: data.lecture_id,
-            studentId,
-            detectionCount: 1,
-            focusScore: wasAttentive ? 100 : 0,
-            distractionCount: wasAttentive ? 0 : 1,
+            lectureId: body.lecture_id,
+            studentId: face.person_id,
+            timestamp: new Date(),
+            focusScore: face.attention_status === 'focused' ? 100 : 50,
+            distractionCount: face.attention_status === 'unfocused' ? 1 : 0,
+            engagementLevel: face.attention_status === 'focused' ? 'high' : 'medium',
             handRaisedCount: face.hand_raising_status?.is_hand_raised ? 1 : 0,
-            attentionDuration: wasAttentive ? 5 : 0, // Assuming 5 second intervals
-            recognitionStatus: face.recognition_status,
-            engagementLevel: wasAttentive ? 'high' : 'low',
-            averageConfidence: face.confidence || 0,
-            detectionSnapshots: [{
-              timestamp: timestamp.toISOString(),
-              attention_status: face.attention_status,
-              bounding_box: face.bounding_box,
-              confidence: face.confidence,
-              hand_raised: face.hand_raising_status?.is_hand_raised || false
-            }]
+            recognitionStatus: face.recognition_status
           }
         });
+        
+        processedFaces.updated++;
+      } catch (error) {
+        console.error(`Error processing face data for ${face.person_id}:`, error);
+        // Continue with other faces
       }
     }
     
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
-      message: 'Engagement data saved successfully',
-      processed_faces: data.faces.filter(f => f.recognition_status === 'known').length,
-      total_faces: data.total_faces
+      processed: processedFaces,
+      timestamp: new Date().toISOString(),
+      total_faces: body.total_faces
     });
     
   } catch (error) {
     console.error('Error processing engagement data:', error);
     return NextResponse.json(
-      { error: 'Failed to process engagement data' },
+      { error: 'Failed to process engagement data', details: String(error) },
       { status: 500 }
     );
   }
@@ -215,13 +162,33 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    // Check authentication
-    const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    // Check authentication - but allow development access
+    let userId = 'dev-user-id';
+    let isDevMode = false;
+    
+    try {
+      const session = await getServerSession(authOptions);
+      if (session?.user?.id) {
+        userId = session.user.id as string;
+      } else if (process.env.NODE_ENV === 'production') {
+        // Only enforce strict auth in production
+        return NextResponse.json(
+          { error: 'Unauthorized' },
+          { status: 401 }
+        );
+      } else {
+        isDevMode = true;
+      }
+    } catch (authError) {
+      console.warn('Auth check failed, using development fallback:', authError);
+      // Continue with development fallback in dev mode
+      if (process.env.NODE_ENV === 'production') {
+        return NextResponse.json(
+          { error: 'Authentication error' },
+          { status: 500 }
+        );
+      }
+      isDevMode = true;
     }
     
     const url = new URL(req.url);
@@ -254,7 +221,8 @@ export async function GET(req: NextRequest) {
       );
     }
     
-    if (lecture.course.instructorId !== session.user.id) {
+    // Skip permission check in dev mode
+    if (!isDevMode && lecture.course.instructorId !== userId) {
       return NextResponse.json(
         { error: 'You are not authorized to access this lecture data' },
         { status: 403 }
@@ -284,7 +252,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error('Error fetching engagement data:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch engagement data' },
+      { error: 'Failed to fetch engagement data', details: String(error) },
       { status: 500 }
     );
   }

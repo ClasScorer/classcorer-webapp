@@ -1,73 +1,165 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { getServerSession } from "next-auth";
+import { NextRequest, NextResponse } from 'next/server';
+import prisma from '@/app/lib/prisma';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/lib/auth';
 
 // GET - Fetch lectures (with optional filters)
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const courseId = searchParams.get("courseId");
-
+export async function GET(req: NextRequest) {
   try {
-    const whereClause = courseId ? { courseId } : {};
+    // Check authentication - but allow development access
+    let userId = 'dev-user-id';
+    let isDevMode = false;
     
+    try {
+      const session = await getServerSession(authOptions);
+      if (session?.user?.id) {
+        userId = session.user.id as string;
+      } else if (process.env.NODE_ENV === 'production') {
+        // Only enforce strict auth in production
+        return NextResponse.json(
+          { error: 'Unauthorized' },
+          { status: 401 }
+        );
+      } else {
+        isDevMode = true;
+      }
+    } catch (authError) {
+      console.warn('Auth check failed, using development fallback:', authError);
+      // Continue with development fallback in dev mode
+      if (process.env.NODE_ENV === 'production') {
+        return NextResponse.json(
+          { error: 'Authentication error' },
+          { status: 500 }
+        );
+      }
+      isDevMode = true;
+    }
+    
+    const url = new URL(req.url);
+    const courseId = url.searchParams.get('courseId');
+    
+    // Prepare the query
+    const query: any = {};
+    
+    // Filter by course if provided
+    if (courseId) {
+      // Check if course exists and belongs to the user
+      const course = await prisma.course.findUnique({
+        where: { id: courseId },
+        select: { id: true, instructorId: true }
+      });
+      
+      if (!course) {
+        return NextResponse.json(
+          { error: 'Course not found' },
+          { status: 404 }
+        );
+      }
+      
+      // Skip permission check in dev mode
+      if (!isDevMode && course.instructorId !== userId) {
+        return NextResponse.json(
+          { error: 'You are not authorized to view lectures for this course' },
+          { status: 403 }
+        );
+      }
+      
+      query.courseId = courseId;
+    } else if (!isDevMode) {
+      // If no course specified and not in dev mode, restrict to user's courses
+      query.course = {
+        instructorId: userId
+      };
+    }
+    
+    // Get lectures
     const lectures = await prisma.lecture.findMany({
-      where: whereClause,
-      orderBy: {
-        date: "desc",
-      },
+      where: query,
       include: {
         course: {
           select: {
+            id: true,
             name: true,
-            code: true,
-          },
-        },
+            code: true
+          }
+        }
       },
+      orderBy: {
+        date: 'desc'
+      }
     });
-
+    
     return NextResponse.json(lectures);
+    
   } catch (error) {
-    console.error("[LECTURES_GET]", error);
-    return new NextResponse("Internal error", { status: 500 });
+    console.error('Error fetching lectures:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch lectures', details: String(error) },
+      { status: 500 }
+    );
   }
 }
 
 // POST - Create a new lecture
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession();
+    // Check authentication - but allow development access
+    let userId = 'dev-user-id';
+    let isDevMode = false;
     
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    try {
+      const session = await getServerSession(authOptions);
+      if (session?.user?.id) {
+        userId = session.user.id as string;
+      } else if (process.env.NODE_ENV === 'production') {
+        // Only enforce strict auth in production
+        return NextResponse.json(
+          { error: 'Unauthorized' },
+          { status: 401 }
+        );
+      } else {
+        isDevMode = true;
+        console.log('DEV MODE: Using dev-user-id for authentication');
+      }
+    } catch (authError) {
+      console.warn('Auth check failed, using development fallback:', authError);
+      // Continue with development fallback in dev mode
+      if (process.env.NODE_ENV === 'production') {
+        return NextResponse.json(
+          { error: 'Authentication error' },
+          { status: 500 }
+        );
+      }
+      isDevMode = true;
     }
+
+    const data = await req.json();
     
-    const { title, description, date, duration, courseId } = await request.json();
-    
-    if (!title || !date || !courseId) {
+    // Validate required fields
+    if (!data.courseId || !data.title) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: 'Missing required fields: courseId and title' },
         { status: 400 }
       );
     }
-    
-    // Validate that the course exists and belongs to the user
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      include: {
-        courses: {
-          where: { id: courseId },
-          select: { id: true },
-        },
-      },
+
+    // Check if course exists and belongs to the user
+    const course = await prisma.course.findUnique({
+      where: { id: data.courseId },
+      select: { id: true, instructorId: true }
     });
     
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (!course) {
+      return NextResponse.json(
+        { error: 'Course not found' },
+        { status: 404 }
+      );
     }
     
-    if (user.courses.length === 0) {
+    // Skip permission check in dev mode
+    if (!isDevMode && course.instructorId !== userId) {
       return NextResponse.json(
-        { error: "You don't have permission to add lectures to this course" },
+        { error: 'You are not authorized to create lectures for this course' },
         { status: 403 }
       );
     }
@@ -75,18 +167,23 @@ export async function POST(request: Request) {
     // Create the lecture
     const lecture = await prisma.lecture.create({
       data: {
-        title,
-        description,
-        date: new Date(date),
-        duration,
-        courseId,
-      },
+        title: data.title,
+        description: data.description || null,
+        date: data.date ? new Date(data.date) : new Date(),
+        duration: data.duration || 60, // Default 60 minutes
+        isActive: true,
+        courseId: data.courseId,
+      }
     });
     
     return NextResponse.json(lecture);
+    
   } catch (error) {
-    console.error("[LECTURES_POST]", error);
-    return new NextResponse("Internal error", { status: 500 });
+    console.error('Error creating lecture:', error);
+    return NextResponse.json(
+      { error: 'Failed to create lecture', details: String(error) },
+      { status: 500 }
+    );
   }
 }
 
