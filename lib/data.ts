@@ -670,7 +670,12 @@ export function formatTime(time: string): string {
 // Client-safe data fetching methods
 export async function fetchCourses() {
   const baseUrl = getBaseUrl();
-  const res = await fetch(`${baseUrl}/api/courses`);
+  const res = await fetch(`${baseUrl}/api/courses`, {
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
   if (!res.ok) throw new Error("Failed to fetch courses");
   return res.json();
 }
