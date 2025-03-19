@@ -5,11 +5,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Camera, Presentation, Mic, MicOff, Video, VideoOff, Share2, MessageSquare, X } from "lucide-react"
+import { Camera, Presentation, Mic, MicOff, Video, VideoOff, Share2, MessageSquare, X, Play, Square, Save } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Course, Student } from "@/lib/data"
 import { toast } from "sonner"
+import { useRouter } from "next/navigation"
 
 // Add Google API types
 interface GoogleSlide {
@@ -82,7 +83,91 @@ interface Coordinate {
   score: number
 }
 
+// Types for face detection API response
+interface HandRaising {
+  is_hand_raised: boolean;
+  confidence: number;
+  hand_position: {
+    x: number;
+    y: number;
+  };
+}
+
+interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface FaceData {
+  person_id: string;
+  recognition_status: "new" | "known";
+  attention_status: "focused" | "unfocused";
+  hand_raising_status: HandRaising;
+  confidence: number;
+  bounding_box: BoundingBox;
+}
+
+interface FaceDetectionSummary {
+  new_faces: number;
+  known_faces: number;
+  focused_faces: number;
+  unfocused_faces: number;
+  hands_raised: number;
+}
+
+interface FaceDetectionResponse {
+  lecture_id: string;
+  timestamp: string;
+  total_faces: number;
+  faces: FaceData[];
+  summary: FaceDetectionSummary;
+}
+
+// Add enhanced types for slide management
+interface SlideData {
+  id: string;
+  title: string;
+  thumbnailUrl: string;
+  index: number;
+  current: boolean;
+}
+
+interface PresentationData {
+  id: string;
+  title: string;
+  slides: SlideData[];
+}
+
+// Enhanced face detection types
+interface AttentionMetrics {
+  focusScore: number;
+  focusDuration: number;
+  distractionCount: number;
+  engagementLevel: 'high' | 'medium' | 'low';
+}
+
+interface EnhancedFaceData extends FaceData {
+  attentionMetrics?: AttentionMetrics;
+  name?: string;
+  lastDetectedAt?: string;
+  consecutiveFrames?: number;
+}
+
+interface EnhancedFaceDetectionResponse extends FaceDetectionResponse {
+  classEngagement: number;
+  timeSeries?: {
+    timestamp: string;
+    focusedPercentage: number;
+    totalFaces: number;
+  }[];
+  faces: EnhancedFaceData[];
+}
+
 export function LectureRoom({ course, students }: LectureRoomProps) {
+  const router = useRouter();
+  
   // State for video/audio controls
   const [isVideoOn, setIsVideoOn] = useState(false)
   const [isAudioOn, setIsAudioOn] = useState(false)
@@ -92,9 +177,19 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [messageInput, setMessageInput] = useState("")
 
+  // State for face detection
+  const [isDetecting, setIsDetecting] = useState(false)
+  const [detectionInterval, setDetectionInterval] = useState<NodeJS.Timeout | null>(null)
+  const [faceData, setFaceData] = useState<EnhancedFaceDetectionResponse | null>(null)
+  const [lectureStarted, setLectureStarted] = useState(false)
+  const [lectureId, setLectureId] = useState<string | null>(null)
+  const [attendanceData, setAttendanceData] = useState<{[studentId: string]: {status: string, joinTime: Date, lastSeen: Date}}>({})
+
   // Refs for media elements
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const detectionCanvasRef = useRef<HTMLCanvasElement>(null)
+  const displayCanvasRef = useRef<HTMLCanvasElement>(null)
 
   // Slides state
   const [presentationUrl, setPresentationUrl] = useState<string>("")
@@ -105,18 +200,133 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [displayCoords, setDisplayCoords] = useState<{ [key: number]: { x: number, y: number, width: number, height: number } }>({})
 
-  // Handle presentation URL change
-  const handlePresentationUrl = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Enhanced state for slides and presentations
+  const [presentationData, setPresentationData] = useState<PresentationData | null>(null)
+  const [activeSlideIndex, setActiveSlideIndex] = useState(0)
+  const [slideThumbnails, setSlideThumbnails] = useState<string[]>([])
+  const [isLoadingSlides, setIsLoadingSlides] = useState(false)
+  
+  // Enhanced state for face detection
+  const [detectionHistory, setDetectionHistory] = useState<EnhancedFaceDetectionResponse[]>([])
+  const [historyView, setHistoryView] = useState(false)
+
+  // Function to create a new lecture record
+  const startNewLecture = async () => {
+    try {
+      const response = await fetch("/api/lectures", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: `Live Lecture - ${new Date().toLocaleString()}`,
+          description: "Automatically created from live lecture session",
+          date: new Date().toISOString(),
+          duration: 60, // Default duration in minutes
+          courseId: course.id,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create lecture record");
+      }
+
+      const data = await response.json();
+      setLectureId(data.id);
+      return data.id;
+    } catch (error) {
+      console.error("Error creating lecture:", error);
+      toast.error("Failed to create lecture record");
+      return null;
+    }
+  };
+
+  // Function to save attendance records
+  const saveAttendanceRecords = async () => {
+    if (!lectureId) return;
+    
+    try {
+      const records = Object.entries(attendanceData).map(([studentId, data]) => ({
+        studentId,
+        status: data.status,
+        joinTime: data.joinTime,
+        leaveTime: new Date()
+      }));
+      
+      const response = await fetch("/api/attendance", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          lectureId,
+          records
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save attendance records");
+      }
+      
+      toast.success("Attendance records saved successfully");
+      return true;
+    } catch (error) {
+      console.error("Error saving attendance:", error);
+      toast.error("Failed to save attendance records");
+      return false;
+    }
+  };
+
+  // Enhanced function to handle Google Slides integration
+  const handlePresentationUrl = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const url = e.target.value
     setPresentationUrl(url)
     
     try {
       const id = url.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1]
       if (id) {
+        setIsLoadingSlides(true)
         setEmbedUrl(`https://docs.google.com/presentation/d/${id}/embed?start=false&loop=false&delayms=3000`)
+        
+        // Generate mock slide thumbnails (in a real app, this would use the Google Slides API)
+        const mockThumbnails = Array.from({ length: 5 }, (_, i) => 
+          `https://picsum.photos/id/${i + 10}/400/300`
+        )
+        setSlideThumbnails(mockThumbnails)
+        
+        // Mock presentation data
+        setPresentationData({
+          id,
+          title: "Lecture Presentation",
+          slides: mockThumbnails.map((url, index) => ({
+            id: `slide-${index}`,
+            title: `Slide ${index + 1}`,
+            thumbnailUrl: url,
+            index,
+            current: index === 0
+          }))
+        })
+        
+        setIsLoadingSlides(false)
       }
     } catch (error) {
       console.error("Error processing URL:", error)
+      setIsLoadingSlides(false)
+    }
+  }
+
+  // Function to change slides
+  const changeSlide = (index: number) => {
+    if (presentationData && index >= 0 && index < presentationData.slides.length) {
+      setActiveSlideIndex(index)
+      // Update current status in slides
+      setPresentationData({
+        ...presentationData,
+        slides: presentationData.slides.map((slide, i) => ({
+          ...slide,
+          current: i === index
+        }))
+      })
     }
   }
 
@@ -144,6 +354,11 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
         }
         streamRef.current = null
         setIsVideoOn(false)
+        
+        // If we're also detecting faces, stop that too
+        if (isDetecting) {
+          stopFaceDetection();
+        }
       }
     } catch (error) {
       console.error('Error accessing camera:', error)
@@ -167,6 +382,320 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       console.error('Error accessing microphone:', error)
     }
   }
+
+  // Function to capture a video frame and convert to blob
+  const captureVideoFrame = (): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      if (!videoRef.current || !isVideoOn) {
+        reject(new Error("Video is not available"));
+        return;
+      }
+
+      const canvas = detectionCanvasRef.current;
+      if (!canvas) {
+        reject(new Error("Canvas is not available"));
+        return;
+      }
+
+      const video = videoRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error("Canvas context not available"));
+        return;
+      }
+      
+      // Draw the current video frame to the hidden canvas
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Convert the canvas to a blob
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error("Failed to create blob from canvas"));
+        }
+      }, 'image/jpeg', 0.8); // JPEG at 80% quality
+    });
+  };
+
+  // Function to send frame to API and get face detection results
+  const sendFrameToAPI = async (frameBlob: Blob) => {
+    if (!lectureId) return null;
+    
+    const formData = new FormData();
+    formData.append('image', frameBlob);
+    formData.append('lecture_id', lectureId);
+    
+    try {
+      // Replace with your actual API endpoint
+      const response = await fetch('/api/face-detection', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      const data: FaceDetectionResponse = await response.json();
+      
+      // Also send the data to our engagement API to store in the database
+      saveEngagementData(data);
+      
+      return data;
+    } catch (error) {
+      console.error('Error sending frame to API:', error);
+      return null;
+    }
+  };
+
+  // Function to save engagement data to the database
+  const saveEngagementData = async (data: FaceDetectionResponse) => {
+    if (!lectureId) return;
+    
+    try {
+      const response = await fetch('/api/lectures/engagement', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to save engagement data:', await response.text());
+      }
+    } catch (error) {
+      console.error('Error saving engagement data:', error);
+    }
+  };
+
+  // Enhanced function to process face detection with more metrics
+  const processFaceDetectionResults = (data: FaceDetectionResponse) => {
+    if (!data || !data.faces || data.faces.length === 0) return;
+    
+    // Add enhanced metrics to face data
+    const enhancedFaces: EnhancedFaceData[] = data.faces.map(face => {
+      const student = students.find(s => s.id === face.person_id);
+      
+      // Generate random engagement metrics for demo purposes
+      // In a real app, this would come from actual analysis
+      const attentionMetrics: AttentionMetrics = {
+        focusScore: Math.round(Math.random() * 100),
+        focusDuration: Math.round(Math.random() * 60),
+        distractionCount: Math.round(Math.random() * 5),
+        engagementLevel: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low'
+      };
+      
+      return {
+        ...face,
+        name: student?.name || "Unknown",
+        attentionMetrics,
+        lastDetectedAt: new Date().toISOString(),
+        consecutiveFrames: Math.floor(Math.random() * 10) + 1
+      };
+    });
+    
+    // Create enhanced response with overall class engagement score
+    const enhancedData: EnhancedFaceDetectionResponse = {
+      ...data,
+      faces: enhancedFaces,
+      classEngagement: Math.round(
+        (data.summary.focused_faces / Math.max(data.total_faces, 1)) * 100
+      ),
+      timeSeries: detectionHistory.slice(-10).map((history, index) => ({
+        timestamp: new Date(Date.now() - (10 - index) * 5000).toISOString(),
+        focusedPercentage: history?.summary?.focused_faces / Math.max(history?.total_faces, 1) * 100 || 0,
+        totalFaces: history?.total_faces || 0
+      }))
+    };
+    
+    // Update the UI with enhanced face detection data
+    setFaceData(enhancedData);
+    setDetectionHistory(prev => [...prev, enhancedData].slice(-20)); // Keep last 20 records
+    
+    // Process faces for attendance
+    const now = new Date();
+    const updatedAttendance = {...attendanceData};
+    
+    enhancedData.faces.forEach(face => {
+      if (face.recognition_status === "known") {
+        const studentId = face.person_id;
+        
+        // Find the corresponding student
+        const student = students.find(s => s.id === studentId);
+        if (!student) return;
+        
+        if (updatedAttendance[studentId]) {
+          // Update existing record
+          updatedAttendance[studentId].lastSeen = now;
+        } else {
+          // Create new record
+          updatedAttendance[studentId] = {
+            status: "PRESENT",
+            joinTime: now,
+            lastSeen: now
+          };
+        }
+      }
+    });
+    
+    setAttendanceData(updatedAttendance);
+  };
+
+  // Function to start face detection
+  const startFaceDetection = async () => {
+    if (!isVideoOn) {
+      toast.error("Please turn on your camera first");
+      return;
+    }
+    
+    // Create a new lecture if one doesn't exist
+    const newLectureId = lectureId || await startNewLecture();
+    if (!newLectureId) {
+      toast.error("Failed to start lecture");
+      return;
+    }
+    
+    setLectureStarted(true);
+    setIsDetecting(true);
+    
+    // Clear any existing interval
+    if (detectionInterval) {
+      clearInterval(detectionInterval);
+    }
+    
+    // Set up interval for face detection (every 5 seconds)
+    const interval = setInterval(async () => {
+      try {
+        const frameBlob = await captureVideoFrame();
+        const detectionResults = await sendFrameToAPI(frameBlob);
+        
+        if (detectionResults) {
+          processFaceDetectionResults(detectionResults);
+        }
+      } catch (error) {
+        console.error("Error in face detection cycle:", error);
+      }
+    }, 5000); // Every 5 seconds
+    
+    setDetectionInterval(interval);
+    toast.success("Face detection started");
+  };
+
+  // Function to stop face detection
+  const stopFaceDetection = () => {
+    if (detectionInterval) {
+      clearInterval(detectionInterval);
+      setDetectionInterval(null);
+    }
+    
+    setIsDetecting(false);
+    toast.info("Face detection stopped");
+  };
+
+  // Function to end lecture
+  const endLecture = async () => {
+    // Stop detection
+    stopFaceDetection();
+    
+    // Save attendance records
+    if (lectureId) {
+      await saveAttendanceRecords();
+      
+      // Navigate to the lecture details page
+      router.push(`/dashboard/lectures/${course.id}/${lectureId}`);
+    }
+    
+    // Clean up
+    setLectureStarted(false);
+    setLectureId(null);
+    setAttendanceData({});
+    setFaceData(null);
+  };
+
+  // Draw face boxes on the display canvas
+  const drawFaceBoxes = useCallback(() => {
+    if (!faceData || !faceData.faces || !displayCanvasRef.current || !videoRef.current) return;
+    
+    const canvas = displayCanvasRef.current;
+    const video = videoRef.current;
+    
+    // Set canvas dimensions to match video
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Clear previous drawings
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw each face box
+    faceData.faces.forEach(face => {
+      const { x, y, width, height } = face.bounding_box;
+      
+      // Convert normalized coordinates to pixel values if needed
+      const boxX = x * canvas.width;
+      const boxY = y * canvas.height;
+      const boxWidth = width * canvas.width;
+      const boxHeight = height * canvas.height;
+      
+      // Set styles based on attention status
+      ctx.strokeStyle = face.attention_status === "focused" ? '#4CAF50' : '#F44336';
+      ctx.lineWidth = 3;
+      
+      // Draw rectangle
+      ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+      
+      // Draw hand raised indicator if applicable
+      if (face.hand_raising_status.is_hand_raised) {
+        ctx.fillStyle = 'rgba(255, 193, 7, 0.8)';
+        ctx.beginPath();
+        ctx.arc(
+          boxX + boxWidth, 
+          boxY, 
+          10, 0, 2 * Math.PI
+        );
+        ctx.fill();
+      }
+      
+      // Add label
+      const status = face.recognition_status === "known" ? "Known" : "New";
+      const studentId = face.person_id;
+      const student = students.find(s => s.id === studentId);
+      const label = student ? student.name : `${status} Person`;
+      
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(boxX, boxY - 20, boxWidth, 20);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '12px Arial';
+      ctx.fillText(label, boxX + 5, boxY - 5);
+    });
+  }, [faceData, students]);
+
+  // Update canvas when face data changes
+  useEffect(() => {
+    if (faceData) {
+      drawFaceBoxes();
+    }
+  }, [faceData, drawFaceBoxes]);
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (detectionInterval) {
+        clearInterval(detectionInterval);
+      }
+      
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [detectionInterval]);
 
   // Handle screen sharing
   const toggleScreenShare = async () => {
@@ -225,7 +754,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
         student: {
           id: 'professor',
           name: 'Professor',
-          email: course.instructor || '',
+          email: course.instructor.email || '',
           avatar: '/avatars/professor.jpg',
           status: 'Excellent',
           courseId: course.id,
@@ -245,476 +774,496 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     }
   }
 
-  // Function to fetch coordinates
-  const fetchCoordinates = useCallback(async () => {
-    try {
-      const response = await fetch('http://localhost:8000/localize-coords', {
-        method: 'GET',
-        mode: 'cors',
-        headers: {
-          'Accept': 'application/json',
-        },
-      })
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      const data = await response.json()
-      console.log('Received coordinates:', data)
-      
-      // Extract bounding boxes from response
-      const boxes = data.bounding_boxes || []
-      setCoordinates(boxes)
-    } catch (error) {
-      console.error('Error fetching coordinates:', error)
-      setCoordinates([]) // Reset coordinates on error
-    }
-  }, [])
-
-  // Function to check if a point is inside a box
-  const isPointInBox = (x: number, y: number, box: { x: number, y: number, width: number, height: number }) => {
-    return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height
-  }
-
-  // Handle click on video overlay
-  const handleVideoClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const overlay = e.currentTarget
-    const rect = overlay.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-
-    // Check each person's bounding box
-    for (const [personId, box] of Object.entries(displayCoords)) {
-      if (isPointInBox(x, y, box)) {
-        toast.success(`Clicked on Person ${personId}`, {
-          position: "top-center",
-          duration: 2000,
-        })
-        return
-      }
-    }
-  }
-
-  // Modify drawBoundingBoxes to store display coordinates
-  const drawBoundingBoxes = useCallback(() => {
-    if (!canvasRef.current || !coordinates.length || !videoRef.current) {
-      return
-    }
-
-    const canvas = canvasRef.current
-    const context = canvas.getContext('2d')
-    if (!context) return
-
-    const video = videoRef.current
-    const container = canvas.parentElement
-    if (!container) return
-
-    // Get the container dimensions
-    const rect = container.getBoundingClientRect()
-
-    // Set canvas dimensions to match container for display
-    canvas.width = rect.width
-    canvas.height = rect.height
-
-    // Calculate video display dimensions while maintaining aspect ratio
-    const videoAspect = video.videoWidth / video.videoHeight
-    const containerAspect = rect.width / rect.height
-    
-    let displayWidth = rect.width
-    let displayHeight = rect.height
-    let offsetX = 0
-    let offsetY = 0
-
-    if (containerAspect > videoAspect) {
-      // Container is wider than video
-      displayWidth = displayHeight * videoAspect
-      offsetX = (rect.width - displayWidth) / 2
-    } else {
-      // Container is taller than video
-      displayHeight = displayWidth / videoAspect
-      offsetY = (rect.height - displayHeight) / 2
-    }
-
-    // Clear the entire canvas
-    context.clearRect(0, 0, canvas.width, canvas.height)
-    
-    // Reset display coordinates
-    const newDisplayCoords: { [key: number]: { x: number, y: number, width: number, height: number } } = {}
-    
-    // Draw bounding boxes
-    coordinates.forEach(coord => {
-      // Skip objects with less than 70% confidence
-      if (coord.score < 0.7) return;
-
-      // Save the current context state
-      context.save()
-      
-      // Calculate scaled coordinates
-      const scaleX = displayWidth / video.videoWidth
-      const scaleY = displayHeight / video.videoHeight
-      
-      // Since video is mirrored, flip the x coordinates
-      const x = rect.width - (coord.x_min * scaleX + offsetX) - (coord.x_max - coord.x_min) * scaleX
-      const y = coord.y_min * scaleY + offsetY
-      const width = (coord.x_max - coord.x_min) * scaleX
-      const height = (coord.y_max - coord.y_min) * scaleY
-
-      // Store display coordinates for click detection
-      newDisplayCoords[coord.human_id] = { x, y, width, height }
-      
-      // Set styles for box
-      context.strokeStyle = '#2196F3' // Material Blue
-      context.lineWidth = 2
-      
-      // Draw box with semi-transparent fill
-      context.fillStyle = 'rgba(33, 150, 243, 0.1)' // Light blue with low opacity
-      context.fillRect(x, y, width, height)
-      context.strokeRect(x, y, width, height)
-      
-      // Draw label with background
-      const label = `Person ${coord.human_id} (${Math.round(coord.score * 100)}%)`
-      const labelWidth = context.measureText(label).width
-      
-      // Draw label background
-      const labelY = y > 30 ? y - 24 : y + height + 4 // Place label above or below based on position
-      context.fillStyle = 'rgba(0, 0, 0, 0.7)'
-      context.fillRect(x, labelY, labelWidth + 8, 20)
-      
-      // Draw label text
-      context.fillStyle = 'white'
-      context.font = '14px Inter, system-ui, sans-serif'
-      context.fillText(
-        label,
-        x + 4,
-        labelY + 14
-      )
-      
-      // Restore the context state
-      context.restore()
-    })
-
-    // Update display coordinates
-    setDisplayCoords(newDisplayCoords)
-  }, [coordinates])
-
-  // Function to capture and send frame
-  const captureAndSendFrame = useCallback(async () => {
-    if (!videoRef.current || !canvasRef.current || !isVideoOn) return
-
-    const canvas = canvasRef.current
-    const context = canvas.getContext('2d')
-    if (!context) return
-
-    // Get the container dimensions
-    const container = canvas.parentElement
-    if (!container) return
-
-    // Set canvas dimensions to match video dimensions for accurate capture
-    const video = videoRef.current
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-
-    // Draw the current frame on canvas at original size
-    context.save()
-    context.scale(-1, 1) // Mirror the image
-    context.translate(-canvas.width, 0)
-    context.drawImage(video, 0, 0, canvas.width, canvas.height)
-    context.restore()
-
-    // Convert canvas to blob
-    try {
-      const blob = await new Promise<Blob>((resolve) => 
-        canvas.toBlob((blob) => resolve(blob!), 'image/jpeg')
-      )
-
-      // Send to backend
-      const formData = new FormData()
-      formData.append('file', blob)
-
-      await fetch('http://localhost:8000/localize-image/', {
-        method: 'POST',
-        body: formData,
-        mode: 'cors',
-        headers: {
-          'Accept': 'application/json',
-        },
-      })
-
-      // Fetch coordinates immediately after sending frame
-      await fetchCoordinates()
-      
-      // Draw boxes immediately after getting coordinates
-      drawBoundingBoxes()
-    } catch (error) {
-      console.error('Error sending frame:', error)
-    }
-  }, [isVideoOn, fetchCoordinates, drawBoundingBoxes])
-
-  // Set up interval for capture and continuous drawing
-  useEffect(() => {
-    if (!isVideoOn) return
-
-    // Initial capture
-    captureAndSendFrame()
-    
-    // Set up interval for subsequent captures
-    const captureInterval = setInterval(captureAndSendFrame, 1000)
-
-    // Set up a more frequent interval for redrawing boxes
-    const drawInterval = setInterval(() => {
-      if (coordinates.length > 0) {
-        drawBoundingBoxes()
-      }
-    }, 16) // ~60fps for smooth rendering
-
-    return () => {
-      clearInterval(captureInterval)
-      clearInterval(drawInterval)
-    }
-  }, [isVideoOn, captureAndSendFrame, drawBoundingBoxes, coordinates])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      streamRef.current?.getTracks().forEach(track => track.stop())
-    }
-  }, [])
-
+  // Return JSX for the component with enhanced slides and detection info
   return (
-    <div className="flex-1 space-y-4 p-4 lg:p-8 pt-6">
-      <div className="flex items-center justify-between space-y-2">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">{course.name}</h2>
-          <p className="text-muted-foreground">Live Lecture Session - {course.code}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={toggleScreenShare}
-          >
-            <Share2 className="h-4 w-4 mr-2" />
-            {isSharing ? 'Stop Sharing' : 'Share Screen'}
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => setIsChatOpen(!isChatOpen)}
-          >
-            <MessageSquare className="h-4 w-4 mr-2" />
-            Chat
-          </Button>
-          <Button variant="destructive" size="sm">End Session</Button>
-        </div>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-12">
-        {/* Main Content */}
-        <div className="col-span-12 lg:col-span-8 space-y-4">
-          {/* Camera Feed */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-base font-medium">
-                {isSharing ? 'Screen Share' : 'Camera Feed'}
-              </CardTitle>
-              <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-4">
+      {/* Control Panel */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Lecture Controls</CardTitle>
+          <CardDescription>
+            {lectureStarted 
+              ? `Live lecture in progress - ${Object.keys(attendanceData).length} student(s) detected` 
+              : "Start a live lecture to track student attendance and engagement"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
                 <Button 
-                  variant={isVideoOn ? "default" : "ghost"} 
-                  size="icon"
+                  variant={isVideoOn ? "default" : "outline"}
                   onClick={toggleVideo}
                 >
-                  {isVideoOn ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+                  {isVideoOn ? <VideoOff className="mr-2 h-4 w-4" /> : <Video className="mr-2 h-4 w-4" />}
+                  {isVideoOn ? "Disable Camera" : "Enable Camera"}
                 </Button>
+                
                 <Button 
-                  variant={isAudioOn ? "default" : "ghost"} 
-                  size="icon"
+                  variant={isAudioOn ? "default" : "outline"}
                   onClick={toggleAudio}
                 >
-                  {isAudioOn ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                  {isAudioOn ? <MicOff className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
+                  {isAudioOn ? "Mute Mic" : "Unmute Mic"}
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="aspect-video bg-muted rounded-lg flex items-center justify-center overflow-hidden relative">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  style={{ 
-                    display: isVideoOn || isSharing ? 'block' : 'none',
-                    transform: 'scaleX(-1)',
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    zIndex: 1
-                  }}
-                />
-                <canvas
-                  ref={canvasRef}
-                  style={{
-                    display: isVideoOn ? 'block' : 'none',
-                    transform: 'scaleX(-1)',
-                    width: '100%',
-                    height: '100%',
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    zIndex: 2,
-                    pointerEvents: 'none',
-                    backgroundColor: 'transparent'
-                  }}
-                />
-                {/* Clickable overlay */}
-                <div
-                  onClick={handleVideoClick}
-                  style={{
-                    display: isVideoOn ? 'block' : 'none',
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    zIndex: 3,
-                    cursor: 'pointer'
-                  }}
-                />
-                {!isVideoOn && !isSharing && (
-                  <Camera className="h-12 w-12 text-muted-foreground" />
+              
+              <div className="flex gap-2">
+                <Button 
+                  variant={isSharing ? "default" : "outline"}
+                  onClick={toggleScreenShare}
+                  disabled={lectureStarted && isDetecting}
+                >
+                  <Share2 className="mr-2 h-4 w-4" />
+                  {isSharing ? "Stop Sharing" : "Share Screen"}
+                </Button>
+                
+                <Button 
+                  variant={isChatOpen ? "default" : "outline"}
+                  onClick={() => setIsChatOpen(!isChatOpen)}
+                >
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  {isChatOpen ? "Close Chat" : "Open Chat"}
+                </Button>
+              </div>
+            </div>
+            
+            <div className="flex flex-col gap-2">
+              {!lectureStarted ? (
+                <Button 
+                  variant="default" 
+                  className="bg-green-600 hover:bg-green-700"
+                  onClick={startFaceDetection}
+                  disabled={!isVideoOn}
+                >
+                  <Play className="mr-2 h-4 w-4" />
+                  Start Lecture with Face Detection
+                </Button>
+              ) : (
+                <>
+                  <Button 
+                    variant={isDetecting ? "default" : "outline"}
+                    onClick={isDetecting ? stopFaceDetection : startFaceDetection}
+                    disabled={!isVideoOn}
+                  >
+                    {isDetecting ? <Square className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
+                    {isDetecting ? "Pause Detection" : "Resume Detection"}
+                  </Button>
+                  
+                  <Button 
+                    variant="destructive"
+                    onClick={endLecture}
+                  >
+                    <Save className="mr-2 h-4 w-4" />
+                    End Lecture & Save
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      
+      {/* Video and Detection Results */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Video Display */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Camera Feed</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="relative overflow-hidden rounded-md bg-gray-100 aspect-video">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+              
+              <canvas
+                ref={displayCanvasRef}
+                className="absolute top-0 left-0 w-full h-full pointer-events-none"
+              />
+              
+              {/* Hidden canvas for processing */}
+              <canvas
+                ref={detectionCanvasRef}
+                className="hidden"
+              />
+              
+              {!isVideoOn && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <Camera className="h-12 w-12 mx-auto text-gray-400" />
+                    <p className="mt-2 text-sm text-gray-500">Enable camera to start</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        
+        {/* Enhanced Detection Info */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Face Detection</CardTitle>
+            <CardDescription>
+              Student engagement and attendance tracking
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!faceData ? (
+              <div className="text-center py-8">
+                <Camera className="h-12 w-12 mx-auto text-gray-400" />
+                <p className="mt-4 text-gray-500">
+                  {lectureStarted 
+                    ? "Waiting for detection data..." 
+                    : "Start the lecture to see detection results"}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Enhanced Summary Stats */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-blue-50 p-3 rounded-md text-center">
+                    <p className="text-2xl font-bold text-blue-700">{faceData.total_faces}</p>
+                    <p className="text-sm text-gray-600">Total Faces</p>
+                  </div>
+                  <div className="bg-green-50 p-3 rounded-md text-center">
+                    <p className="text-2xl font-bold text-green-700">{faceData.summary.focused_faces}</p>
+                    <p className="text-sm text-gray-600">Focused</p>
+                  </div>
+                  <div className="bg-yellow-50 p-3 rounded-md text-center">
+                    <div className="text-2xl font-bold text-yellow-700">{faceData.classEngagement}%</div>
+                    <p className="text-sm text-gray-600">Engagement</p>
+                  </div>
+                </div>
+                
+                {/* Engagement Trend */}
+                {faceData.timeSeries && faceData.timeSeries.length > 0 && (
+                  <div className="rounded-md border p-3">
+                    <div className="text-sm font-medium mb-2">Engagement Trend (Last 10 Checks)</div>
+                    <div className="h-20 flex items-end space-x-1">
+                      {faceData.timeSeries.map((point, i) => (
+                        <div 
+                          key={i} 
+                          className="bg-blue-500 w-full rounded-t" 
+                          style={{ 
+                            height: `${Math.max(5, point.focusedPercentage)}%`,
+                            opacity: 0.3 + (i / faceData.timeSeries!.length * 0.7)
+                          }}
+                          title={`${new Date(point.timestamp).toLocaleTimeString()}: ${Math.round(point.focusedPercentage)}% focused`}
+                        />
+                      ))}
+                    </div>
+                  </div>
                 )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Slides */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-base font-medium">Presentation Slides</CardTitle>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="text"
-                  placeholder="Paste Google Slides URL"
-                  className="w-[300px]"
-                  onChange={handlePresentationUrl}
-                  value={presentationUrl}
-                />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="aspect-video bg-muted rounded-lg flex items-center justify-center overflow-hidden">
-                {embedUrl ? (
-                  <iframe
-                    src={embedUrl}
-                    width="100%"
-                    height="100%"
-                    allowFullScreen
-                    className="border-0"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                    <Presentation className="h-12 w-12" />
-                    <p className="text-sm">Paste a Google Slides URL to begin</p>
+                
+                {/* Enhanced Student List */}
+                <div className="rounded-md border">
+                  <div className="py-2 px-4 bg-gray-50 font-medium text-sm">
+                    Detected Students
+                  </div>
+                  <div className="divide-y max-h-60 overflow-y-auto">
+                    {faceData.faces.filter(face => face.recognition_status === "known").map((face) => {
+                      const student = students.find(s => s.id === face.person_id);
+                      if (!student) return null;
+                      
+                      return (
+                        <div key={face.person_id} className="p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-3">
+                              <Avatar>
+                                <AvatarImage src={student.avatar || ""} alt={student.name} />
+                                <AvatarFallback>{student.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium">{student.name}</p>
+                                <p className="text-xs text-gray-500">{student.email}</p>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Badge variant={face.attention_status === "focused" ? "default" : "destructive"}>
+                                {face.attention_status}
+                              </Badge>
+                              {face.hand_raising_status.is_hand_raised && (
+                                <Badge variant="outline" className="bg-yellow-50">
+                                  Hand Raised
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {/* Enhanced metrics */}
+                          {(face as EnhancedFaceData).attentionMetrics && (
+                            <div className="grid grid-cols-4 gap-2 mt-1 text-xs">
+                              <div className="bg-gray-50 p-1 rounded text-center">
+                                <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.focusScore}%</div>
+                                <div className="text-gray-500">Focus</div>
+                              </div>
+                              <div className="bg-gray-50 p-1 rounded text-center">
+                                <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.focusDuration}s</div>
+                                <div className="text-gray-500">Duration</div>
+                              </div>
+                              <div className="bg-gray-50 p-1 rounded text-center">
+                                <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.distractionCount}</div>
+                                <div className="text-gray-500">Distractions</div>
+                              </div>
+                              <div className="bg-gray-50 p-1 rounded text-center">
+                                <div className="font-medium capitalize">{(face as EnhancedFaceData).attentionMetrics?.engagementLevel}</div>
+                                <div className="text-gray-500">Engagement</div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    
+                    {faceData.faces.filter(face => face.recognition_status === "known").length === 0 && (
+                      <div className="p-4 text-center text-gray-500">
+                        No known students detected
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                {/* New Faces */}
+                {faceData.summary.new_faces > 0 && (
+                  <div className="rounded-md border">
+                    <div className="py-2 px-4 bg-gray-50 font-medium text-sm">
+                      Unrecognized Faces
+                    </div>
+                    <div className="p-4 text-center text-gray-500">
+                      {faceData.summary.new_faces} unrecognized {faceData.summary.new_faces === 1 ? 'person' : 'people'} detected
+                    </div>
                   </div>
                 )}
               </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Sidebar */}
-        <div className="col-span-12 lg:col-span-4 space-y-4">
-          {/* Student List */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Students</span>
-                <Badge variant="secondary">{students.length} Online</Badge>
-              </CardTitle>
-              <CardDescription>Real-time student tracking</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[300px]">
-                <div className="space-y-4">
-                  {students.map((student) => (
-                    <div key={student.id} className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
-                        <Avatar>
-                          <AvatarImage src={student.avatar} />
-                          <AvatarFallback>{student.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div className="font-medium">{student.name}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {student.status === 'Excellent' ? 'Active' : 
-                             student.status === 'Good' ? 'Away' : 'Inactive'}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon">
-                          <VideoOff className="h-4 w-4 text-muted-foreground" />
-                        </Button>
-                        <Button variant="ghost" size="icon">
-                          <MicOff className="h-4 w-4 text-muted-foreground" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+            )}
+          </CardContent>
+        </Card>
+      </div>
+      
+      {/* Enhanced Slides Section */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Presentation</CardTitle>
+          <div className="flex items-center gap-2">
+            {presentationData && (
+              <Badge variant="outline" className="font-normal">
+                Slide {activeSlideIndex + 1} of {presentationData.slides.length}
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {!isSharing && !embedUrl && !currentSlide && !presentationData && (
+              <div className="flex flex-col gap-4">
+                <Input
+                  placeholder="Enter Google Slides URL"
+                  value={presentationUrl}
+                  onChange={handlePresentationUrl}
+                />
+                <div className="flex items-center">
+                  <p className="text-sm text-gray-500 mr-2">Or upload slides:</p>
+                  <input
+                    type="file"
+                    onChange={handleSlideUpload}
+                    accept="image/png, image/jpeg, application/pdf"
+                    className="text-sm text-gray-500"
+                  />
                 </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
-
-          {/* Chat */}
-          {isChatOpen && (
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base font-medium">Chat</CardTitle>
-                <Button 
-                  variant="ghost" 
-                  size="icon"
-                  onClick={() => setIsChatOpen(false)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[300px] mb-4">
-                  <div className="space-y-4">
-                    {messages.map((message, index) => (
-                      <div key={index} className="flex items-start gap-2">
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={message.student.avatar} />
-                          <AvatarFallback>
-                            {message.student.name.split(' ').map(n => n[0]).join('')}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div className="font-medium text-sm">{message.student.name}</div>
-                          <div className="text-sm bg-accent rounded-lg p-2">
-                            {message.text}
+              </div>
+            )}
+            
+            {isLoadingSlides && (
+              <div className="flex justify-center items-center h-40">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            )}
+            
+            {/* Display the presentation */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* Main slide view */}
+              <div className="md:col-span-3 aspect-video bg-black flex items-center justify-center rounded-md overflow-hidden">
+                {embedUrl && (
+                  <iframe
+                    src={embedUrl}
+                    title="Presentation"
+                    className="w-full h-full border-0"
+                    allowFullScreen
+                  ></iframe>
+                )}
+                
+                {currentSlide && !embedUrl && (
+                  <img
+                    src={currentSlide}
+                    alt="Slide"
+                    className="max-h-full max-w-full"
+                  />
+                )}
+                
+                {presentationData && !embedUrl && !currentSlide && (
+                  <img
+                    src={presentationData.slides[activeSlideIndex].thumbnailUrl}
+                    alt={`Slide ${activeSlideIndex + 1}`}
+                    className="max-h-full max-w-full"
+                  />
+                )}
+                
+                {isSharing && !embedUrl && !currentSlide && !presentationData && (
+                  <div className="text-white">Screen sharing active...</div>
+                )}
+                
+                {!isSharing && !embedUrl && !currentSlide && !presentationData && (
+                  <div className="text-white opacity-50 flex flex-col items-center">
+                    <Presentation className="h-12 w-12 mb-2" />
+                    <p>No presentation active</p>
+                  </div>
+                )}
+              </div>
+              
+              {/* Thumbnails navigation */}
+              {presentationData && presentationData.slides.length > 0 && (
+                <div className="md:col-span-1">
+                  <div className="text-sm font-medium mb-2">Slides</div>
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                    {presentationData.slides.map((slide, index) => (
+                      <div
+                        key={slide.id}
+                        className={`rounded-md overflow-hidden border-2 cursor-pointer transition-all ${
+                          index === activeSlideIndex ? 'border-primary' : 'border-transparent'
+                        }`}
+                        onClick={() => changeSlide(index)}
+                      >
+                        <div className="relative">
+                          <img
+                            src={slide.thumbnailUrl}
+                            alt={`Slide ${index + 1}`}
+                            className="w-full aspect-video object-cover"
+                          />
+                          <div className="absolute bottom-0 right-0 bg-black bg-opacity-70 text-white text-xs px-1">
+                            {index + 1}
                           </div>
                         </div>
                       </div>
                     ))}
                   </div>
-                </ScrollArea>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Type a message..."
-                    value={messageInput}
-                    onChange={(e) => setMessageInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                  />
-                  <Button onClick={handleSendMessage}>Send</Button>
                 </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
+              )}
+            </div>
+            
+            {/* Navigation buttons for presentation */}
+            {presentationData && presentationData.slides.length > 0 && (
+              <div className="flex justify-center gap-2 mt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => changeSlide(activeSlideIndex - 1)}
+                  disabled={activeSlideIndex <= 0}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => changeSlide(activeSlideIndex + 1)}
+                  disabled={activeSlideIndex >= presentationData.slides.length - 1}
+                >
+                  Next
+                </Button>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+      
+      {/* Chat Panel (Shown conditionally) */}
+      {isChatOpen && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Class Chat</CardTitle>
+            <Button variant="ghost" size="sm" onClick={() => setIsChatOpen(false)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-4">
+              <ScrollArea className="h-[300px] pr-4">
+                <div className="space-y-4">
+                  {messages.length === 0 ? (
+                    <div className="text-center py-8">
+                      <MessageSquare className="h-12 w-12 mx-auto text-gray-400" />
+                      <p className="mt-2 text-sm text-gray-500">No messages yet</p>
+                    </div>
+                  ) : (
+                    messages.map((message, index) => (
+                      <div
+                        key={index}
+                        className={`flex gap-3 ${
+                          message.student.id === 'professor' ? 'justify-end' : ''
+                        }`}
+                      >
+                        {message.student.id !== 'professor' && (
+                          <Avatar>
+                            <AvatarImage
+                              src={message.student.avatar || ""}
+                              alt={message.student.name}
+                            />
+                            <AvatarFallback>
+                              {message.student.name.substring(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
+                        <div
+                          className={`rounded-lg px-4 py-2 max-w-[75%] ${
+                            message.student.id === 'professor'
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-muted'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center gap-2 mb-1">
+                            <p className="text-xs font-medium">
+                              {message.student.name}
+                            </p>
+                          </div>
+                          <p>{message.text}</p>
+                        </div>
+                        {message.student.id === 'professor' && (
+                          <Avatar>
+                            <AvatarImage
+                              src={message.student.avatar || ""}
+                              alt={message.student.name}
+                            />
+                            <AvatarFallback>
+                              {message.student.name.substring(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Type your message..."
+                  value={messageInput}
+                  onChange={e => setMessageInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      handleSendMessage()
+                    }
+                  }}
+                />
+                <Button onClick={handleSendMessage}>Send</Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 } 

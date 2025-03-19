@@ -25,7 +25,7 @@ import {
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import { type Course, loadCourses, getCurrentUser } from "@/lib/data"
+import { type Course, fetchCourses, getCurrentUser } from "@/lib/data"
 
 interface NavItem {
   title: string
@@ -139,7 +139,7 @@ export function AppSidebar() {
   useEffect(() => {
     async function loadData() {
       const [courses, user] = await Promise.all([
-        loadCourses(),
+        fetchCourses(),
         getCurrentUser(),
       ])
 

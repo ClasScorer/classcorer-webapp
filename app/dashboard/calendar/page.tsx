@@ -3,7 +3,7 @@
 import { Calendar } from "./calendar";
 import { Button } from "@/components/ui/button";
 import { Filter, ChevronDown } from "lucide-react";
-import { loadCalendarEvents, loadCourses } from "@/lib/data";
+import { fetchCalendarEvents, fetchCourses } from "@/lib/data";
 import { AddEventDialog } from "./add-event-dialog";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
@@ -19,8 +19,8 @@ export default function CalendarPage() {
     async function loadData() {
       try {
         const [eventsData, coursesData] = await Promise.all([
-          loadCalendarEvents(),
-          loadCourses()
+          fetchCalendarEvents(),
+          fetchCourses()
         ])
         // Convert Event to CalendarEvent
         const calendarEvents: CalendarEvent[] = eventsData.map((event, index) => {

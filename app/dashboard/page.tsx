@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import { CalendarDays, GraduationCap, BookOpen, Bell, ArrowRight, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
+import { CalendarDays, GraduationCap, BookOpen, Bell, ArrowRight, TrendingUp, TrendingDown, AlertTriangle, Calendar, Presentation, Users } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -10,6 +10,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { PerformanceGraph } from "./performance-graph";
 import { StudentLeaderboard } from "./student-leaderboard";
+import { CanvasIntegration } from "./canvas-integration";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { loadCourses, loadCalendarEvents, loadStudents, formatPercentage, formatTrend, type Course, type CalendarEvent, type Student } from "@/lib/data";
@@ -151,13 +152,37 @@ export default async function DashboardPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button asChild>
-              <Link href="/dashboard/calendar">
-                <CalendarDays className="mr-2 h-4 w-4" />
-                View Calendar
-              </Link>
-            </Button>
+            <Link href="/dashboard/calendar">
+              <Button variant="outline" className="w-full justify-start">
+                <Calendar className="mr-2 h-4 w-4" />
+                Calendar
+              </Button>
+            </Link>
+
+            <Link href="/dashboard/lectures">
+              <Button variant="outline" className="w-full justify-start">
+                <Presentation className="mr-2 h-4 w-4" />
+                Lectures
+              </Button>
+            </Link>
+
+            <Link href="/dashboard/students">
+              <Button variant="outline" className="w-full justify-start">
+                <Users className="mr-2 h-4 w-4" />
+                Students
+              </Button>
+            </Link>
           </div>
+        </div>
+
+        {/* Canvas LMS Integration Section */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-medium">Integrations</h3>
+          </div>
+          <Suspense fallback={<div>Loading Canvas integration...</div>}>
+            <CanvasIntegration />
+          </Suspense>
         </div>
 
         {/* Quick Stats with Trends */}

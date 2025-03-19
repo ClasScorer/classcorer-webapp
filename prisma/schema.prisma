@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -14,76 +8,222 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String
-  email         String    @unique
-  password      String
-  role          String    @default("professor")
-  department    String?
-  avatar        String?
-  joinDate      DateTime  @default(now())
-  timezone      String?
-  language      String?   @default("English")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  courses       Course[]
+  id           String        @id @default(cuid())
+  name         String
+  email        String        @unique
+  password     String
+  role         UserRole      @default(PROFESSOR)
+  department   String?
+  avatar       String?
+  timezone     String?
+  language     String?       @default("English")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  canvasConfig CanvasConfig?
+  courses      Course[]
+  students     Student[]
 }
 
 model Course {
-  id            String    @id @default(cuid())
-  name          String
-  code          String    @unique
-  description   String?
-  instructor    User      @relation(fields: [instructorId], references: [id])
-  instructorId  String
-  status        String    @default("on-track")
-  week          Int       @default(1)
-  progress      Int       @default(0)
-  credits       Int       @default(3)
-  average       Float     @default(0)
-  attendance    Float     @default(0)
-  passRate      Float     @default(0)
-  classAverage  Float     @default(0)
-  totalStudents Int       @default(0)
-  atRiskCount   Int       @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  students      Student[]
-  events        Event[]
+  id             String              @id @default(cuid())
+  name           String
+  code           String              @unique
+  description    String?
+  credits        Int                 @default(3)
+  startDate      DateTime?
+  endDate        DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  instructorId   String
+  canvasCourseId String?
+  announcements  Announcement[]
+  assignments    Assignment[]
+  instructor     User                @relation(fields: [instructorId], references: [id])
+  lectures       Lecture[]
+  students       StudentEnrollment[]
 }
 
 model Student {
-  id                String   @id @default(cuid())
-  name              String
-  email             String   @unique
-  avatar            String?
-  score             Int      @default(0)
-  level             Int      @default(1)
-  average           Float    @default(0)
-  attendance        Float    @default(0)
-  submissions       Int      @default(0)
-  lastSubmission    DateTime?
-  status            String   @default("Good")
-  trend            String   @default("stable")
-  badges           String[]
-  progress         Int      @default(0)
-  streak           Int      @default(0)
-  grade            String   @default("N/A")
-  course           Course   @relation(fields: [courseId], references: [id])
-  courseId         String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id              String              @id @default(cuid())
+  name            String
+  email           String              @unique
+  avatar          String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  professorId     String?
+  canvasStudentId String?
+  attendances     Attendance[]
+  engagements     StudentEngagement[]
+  professor       User?               @relation(fields: [professorId], references: [id])
+  badges          StudentBadge[]
+  enrollments     StudentEnrollment[]
+  submissions     Submission[]
 }
 
-model Event {
+model StudentEnrollment {
+  id         String   @id @default(cuid())
+  status     String   @default("ACTIVE")
+  enrolledAt DateTime @default(now())
+  studentId  String
+  courseId   String
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, courseId])
+}
+
+model Assignment {
+  id                 String         @id @default(cuid())
+  title              String
+  description        String?
+  dueDate            DateTime
+  pointsPossible     Float          @default(100)
+  weight             Float?
+  assignmentType     AssignmentType
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  courseId           String
+  canvasAssignmentId String?
+  course             Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  submissions        Submission[]
+}
+
+model Submission {
+  id                 String           @id @default(cuid())
+  submittedAt        DateTime         @default(now())
+  score              Float?
+  feedback           String?
+  isLate             Boolean          @default(false)
+  status             SubmissionStatus @default(SUBMITTED)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  studentId          String
+  assignmentId       String
+  canvasSubmissionId String?
+  assignment         Assignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student            Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, assignmentId])
+}
+
+model Lecture {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  date        DateTime
+  duration    Int?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  courseId    String
+  isActive    Boolean      @default(false)
+  attendances Attendance[]
+  engagements StudentEngagement[]
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+}
+
+model Attendance {
+  id        String           @id @default(cuid())
+  status    AttendanceStatus @default(PRESENT)
+  createdAt DateTime         @default(now())
+  joinTime  DateTime?
+  leaveTime DateTime?
+  studentId String
+  lectureId String
+  lecture   Lecture          @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  student   Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, lectureId])
+}
+
+model Badge {
+  id          String         @id @default(cuid())
+  name        String         @unique
+  description String?
+  icon        String?
+  createdAt   DateTime       @default(now())
+  students    StudentBadge[]
+}
+
+model StudentBadge {
+  id        String   @id @default(cuid())
+  awardedAt DateTime @default(now())
+  studentId String
+  badgeId   String
+  badge     Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, badgeId])
+}
+
+model Announcement {
   id          String   @id @default(cuid())
   title       String
-  date        DateTime
-  time        String?
-  type        String
-  description String?
-  course      Course?  @relation(fields: [courseId], references: [id])
-  courseId    String?
+  content     String
+  isImportant Boolean  @default(false)
+  publishedAt DateTime @default(now())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+}
+
+model CanvasConfig {
+  id           String    @id @default(cuid())
+  apiUrl       String
+  apiToken     String
+  isActive     Boolean   @default(false)
+  lastSyncedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  userId       String    @unique
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model StudentEngagement {
+  id                 String   @id @default(cuid())
+  timestamp          DateTime @default(now())
+  attentionDuration  Int      @default(0) // Duration in seconds student was focused
+  distractionCount   Int      @default(0)
+  focusScore         Int      @default(0) // 0-100 percentage
+  handRaisedCount    Int      @default(0)
+  recognitionStatus  String   @default("known")
+  engagementLevel    String   @default("medium") // high, medium, low
+  detectionCount     Int      @default(0) // How many times detected in this lecture
+  averageConfidence  Float    @default(0)
+  lectureId          String
+  studentId          String
+  lecture            Lecture  @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  student            Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  detectionSnapshots Json[]   // Store array of detection data snapshots
+
+  @@unique([studentId, lectureId])
+}
+
+enum UserRole {
+  PROFESSOR
+  TEACHING_ASSISTANT
+  ADMIN
+}
+
+enum AssignmentType {
+  QUIZ
+  ASSIGNMENT
+  DISCUSSION
+  EXAM
+  PROJECT
+  OTHER
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  GRADED
+  RESUBMITTED
+  PENDING
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
 }

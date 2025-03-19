@@ -1,23 +1,14 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { loadStudents } from "@/lib/data"
 
 export async function GET() {
   try {
-    const students = await prisma.student.findMany({
-      include: {
-        course: {
-          select: {
-            name: true,
-            code: true,
-          },
-        },
-      },
-    })
-
+    const students = await loadStudents()
     return NextResponse.json(students)
   } catch (error) {
-    console.error('Error fetching students:', error)
-    return NextResponse.json({ error: 'Error fetching students' }, { status: 500 })
+    console.error("[STUDENTS_GET]", error)
+    return new NextResponse("Internal error", { status: 500 })
   }
 }
 

@@ -13,9 +13,10 @@ export async function GET() {
         avatar: true,
         role: true,
         department: true,
-        joinDate: true,
         timezone: true,
         language: true,
+        createdAt: true,
+        updatedAt: true,
       },
     })
 

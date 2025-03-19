@@ -8,7 +8,7 @@ import { Search, Plus, Filter, ArrowUpRight, GraduationCap, BookOpen, Clock, Tro
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useState, useEffect } from "react";
-import { loadStudents, type Student, type Course, loadCourses } from "@/lib/data";
+import { fetchStudents, type Student, type Course, fetchCourses } from "@/lib/data";
 import {
   Collapsible,
   CollapsibleContent,
@@ -43,8 +43,8 @@ export default function StudentsPage() {
     async function fetchData() {
       try {
         const [studentsData, coursesData] = await Promise.all([
-          loadStudents(),
-          loadCourses()
+          fetchStudents(),
+          fetchCourses()
         ]);
         setStudents(studentsData);
         setCourses(coursesData);
