@@ -904,7 +904,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
         </div>
         
         {/* Video and Detection Results */}
-        <Card className="lg:col-span-7">
+        <Card className="lg:col-span-10">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg">Camera Feed</CardTitle>
           </CardHeader>
@@ -940,16 +940,18 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
             </div>
           </CardContent>
         </Card>
-        
-        {/* Enhanced Detection Info */}
-        <Card className="lg:col-span-3">
+      </div>
+      
+      {/* Enhanced Detection Section - Now below camera and above slides */}
+      <div className="p-4">
+        <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg">Detection</CardTitle>
+            <CardTitle className="text-lg">Detection Analysis</CardTitle>
             <CardDescription className="text-xs">
-              Student engagement tracking
+              Real-time student engagement tracking
             </CardDescription>
           </CardHeader>
-          <CardContent className="p-4">
+          <CardContent>
             {!faceData ? (
               <div className="text-center py-8">
                 <Camera className="h-12 w-12 mx-auto text-gray-400" />
@@ -960,119 +962,135 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                 </p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-6">
                 {/* Enhanced Summary Stats */}
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="bg-blue-50 p-2 rounded-md text-center">
-                    <p className="text-xl font-bold text-blue-700">{faceData.total_faces}</p>
-                    <p className="text-xs text-gray-600">Total</p>
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                  <div className="bg-blue-50 p-4 rounded-lg text-center shadow-sm">
+                    <p className="text-2xl font-bold text-blue-700">{faceData.total_faces}</p>
+                    <p className="text-sm text-gray-600">Total Students</p>
                   </div>
-                  <div className="bg-green-50 p-2 rounded-md text-center">
-                    <p className="text-xl font-bold text-green-700">{faceData.summary.focused_faces}</p>
-                    <p className="text-xs text-gray-600">Focused</p>
+                  <div className="bg-green-50 p-4 rounded-lg text-center shadow-sm">
+                    <p className="text-2xl font-bold text-green-700">{faceData.summary.focused_faces}</p>
+                    <p className="text-sm text-gray-600">Focused</p>
                   </div>
-                  <div className="bg-yellow-50 p-2 rounded-md text-center">
-                    <div className="text-xl font-bold text-yellow-700">{faceData.classEngagement}%</div>
-                    <p className="text-xs text-gray-600">Engagement</p>
+                  <div className="bg-red-50 p-4 rounded-lg text-center shadow-sm">
+                    <p className="text-2xl font-bold text-red-700">{faceData.summary.unfocused_faces}</p>
+                    <p className="text-sm text-gray-600">Unfocused</p>
+                  </div>
+                  <div className="bg-yellow-50 p-4 rounded-lg text-center shadow-sm">
+                    <p className="text-2xl font-bold text-yellow-700">{faceData.summary.hands_raised}</p>
+                    <p className="text-sm text-gray-600">Hands Raised</p>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-lg text-center shadow-sm">
+                    <div className="text-2xl font-bold text-purple-700">{faceData.classEngagement.toFixed(2)}%</div>
+                    <p className="text-sm text-gray-600">Class Engagement</p>
                   </div>
                 </div>
                 
-                {/* Engagement Trend */}
-                {faceData.timeSeries && faceData.timeSeries.length > 0 && (
-                  <div className="rounded-md border p-3">
-                    <div className="text-sm font-medium mb-2">Engagement Trend (Last 10 Checks)</div>
-                    <div className="h-20 flex items-end space-x-1">
-                      {faceData.timeSeries.map((point, i) => (
-                        <div 
-                          key={i} 
-                          className="bg-blue-500 w-full rounded-t" 
-                          style={{ 
-                            height: `${Math.max(5, point.focusedPercentage)}%`,
-                            opacity: 0.3 + (i / faceData.timeSeries!.length * 0.7)
-                          }}
-                          title={`${new Date(point.timestamp).toLocaleTimeString()}: ${Math.round(point.focusedPercentage)}% focused`}
-                        />
-                      ))}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Engagement Trend */}
+                  <div className="lg:col-span-1">
+                    <div className="rounded-lg border p-4 h-full">
+                      <div className="text-sm font-medium mb-3">Engagement Trend</div>
+                      {faceData.timeSeries && faceData.timeSeries.length > 0 ? (
+                        <div className="h-40 flex items-end space-x-1">
+                          {faceData.timeSeries.map((point, i) => (
+                            <div 
+                              key={i} 
+                              className="bg-blue-500 w-full rounded-t" 
+                              style={{ 
+                                height: `${Math.max(5, point.focusedPercentage)}%`,
+                                opacity: 0.3 + (i / faceData.timeSeries!.length * 0.7)
+                              }}
+                              title={`${new Date(point.timestamp).toLocaleTimeString()}: ${Math.round(point.focusedPercentage)}% focused`}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center h-40 text-gray-400">
+                          <p>No trend data available yet</p>
+                        </div>
+                      )}
                     </div>
                   </div>
-                )}
-                
-                {/* Enhanced Student List */}
-                <div className="rounded-md border">
-                  <div className="py-2 px-4 bg-gray-50 font-medium text-sm">
-                    Detected Students
-                  </div>
-                  <div className="divide-y max-h-60 overflow-y-auto">
-                    {faceData.faces.filter(face => face.recognition_status === "known").map((face) => {
-                      const student = students.find(s => s.id === face.person_id);
-                      if (!student) return null;
-                      
-                      return (
-                        <div key={face.person_id} className="p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-3">
-                              <Avatar>
-                                <AvatarImage src={student.avatar || ""} alt={student.name} />
-                                <AvatarFallback>{student.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <p className="font-medium">{student.name}</p>
-                                <p className="text-xs text-gray-500">{student.email}</p>
+                  
+                  {/* Detected Students */}
+                  <div className="lg:col-span-2">
+                    <div className="rounded-lg border h-full">
+                      <div className="py-3 px-4 bg-gray-50 font-medium border-b">
+                        Detected Students
+                      </div>
+                      <div className="divide-y max-h-60 overflow-y-auto p-0">
+                        {faceData.faces.filter(face => face.recognition_status === "known").map((face) => {
+                          const student = students.find(s => s.id === face.person_id);
+                          if (!student) return null;
+                          
+                          return (
+                            <div key={face.person_id} className="p-3 hover:bg-gray-50 transition-colors">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-3">
+                                  <Avatar>
+                                    <AvatarImage src={student.avatar || ""} alt={student.name} />
+                                    <AvatarFallback>{student.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                                  </Avatar>
+                                  <div>
+                                    <p className="font-medium">{student.name}</p>
+                                    <p className="text-xs text-gray-500">{student.email}</p>
+                                  </div>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Badge variant={face.attention_status === "focused" ? "default" : "destructive"}>
+                                    {face.attention_status}
+                                  </Badge>
+                                  {face.hand_raising_status.is_hand_raised && (
+                                    <Badge variant="outline" className="bg-yellow-50">
+                                      Hand Raised
+                                    </Badge>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                            <div className="flex gap-2">
-                              <Badge variant={face.attention_status === "focused" ? "default" : "destructive"}>
-                                {face.attention_status}
-                              </Badge>
-                              {face.hand_raising_status.is_hand_raised && (
-                                <Badge variant="outline" className="bg-yellow-50">
-                                  Hand Raised
-                                </Badge>
+                              
+                              {/* Enhanced metrics */}
+                              {(face as EnhancedFaceData).attentionMetrics && (
+                                <div className="grid grid-cols-4 gap-2 mt-1 text-xs">
+                                  <div className="bg-gray-50 p-1 rounded text-center">
+                                    <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.focusScore}%</div>
+                                    <div className="text-gray-500">Focus</div>
+                                  </div>
+                                  <div className="bg-gray-50 p-1 rounded text-center">
+                                    <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.focusDuration}s</div>
+                                    <div className="text-gray-500">Duration</div>
+                                  </div>
+                                  <div className="bg-gray-50 p-1 rounded text-center">
+                                    <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.distractionCount}</div>
+                                    <div className="text-gray-500">Distractions</div>
+                                  </div>
+                                  <div className="bg-gray-50 p-1 rounded text-center">
+                                    <div className="font-medium capitalize">{(face as EnhancedFaceData).attentionMetrics?.engagementLevel}</div>
+                                    <div className="text-gray-500">Engagement</div>
+                                  </div>
+                                </div>
                               )}
                             </div>
+                          );
+                        })}
+                        
+                        {faceData.faces.filter(face => face.recognition_status === "known").length === 0 && (
+                          <div className="p-6 text-center text-gray-500">
+                            No known students detected
                           </div>
-                          
-                          {/* Enhanced metrics */}
-                          {(face as EnhancedFaceData).attentionMetrics && (
-                            <div className="grid grid-cols-4 gap-2 mt-1 text-xs">
-                              <div className="bg-gray-50 p-1 rounded text-center">
-                                <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.focusScore}%</div>
-                                <div className="text-gray-500">Focus</div>
-                              </div>
-                              <div className="bg-gray-50 p-1 rounded text-center">
-                                <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.focusDuration}s</div>
-                                <div className="text-gray-500">Duration</div>
-                              </div>
-                              <div className="bg-gray-50 p-1 rounded text-center">
-                                <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.distractionCount}</div>
-                                <div className="text-gray-500">Distractions</div>
-                              </div>
-                              <div className="bg-gray-50 p-1 rounded text-center">
-                                <div className="font-medium capitalize">{(face as EnhancedFaceData).attentionMetrics?.engagementLevel}</div>
-                                <div className="text-gray-500">Engagement</div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                    
-                    {faceData.faces.filter(face => face.recognition_status === "known").length === 0 && (
-                      <div className="p-4 text-center text-gray-500">
-                        No known students detected
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
                 </div>
                 
                 {/* New Faces */}
                 {faceData.summary.new_faces > 0 && (
-                  <div className="rounded-md border">
-                    <div className="py-2 px-4 bg-gray-50 font-medium text-sm">
-                      Unrecognized Faces
-                    </div>
-                    <div className="p-4 text-center text-gray-500">
-                      {faceData.summary.new_faces} unrecognized {faceData.summary.new_faces === 1 ? 'person' : 'people'} detected
+                  <div className="rounded-md border p-4">
+                    <div className="font-medium text-sm mb-2">Unrecognized Faces</div>
+                    <div className="text-gray-600">
+                      {faceData.summary.new_faces} unrecognized {faceData.summary.new_faces === 1 ? 'person' : 'people'} detected in the room
                     </div>
                   </div>
                 )}
@@ -1083,7 +1101,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       </div>
       
       {/* Enhanced Slides Section */}
-      <Card>
+      <Card className="m-4">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Presentation</CardTitle>
           <div className="flex items-center gap-2">
