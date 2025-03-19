@@ -830,6 +830,61 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     toast.success("Simulated detection data generated");
   };
 
+  // Add this new function to handle canvas clicks on face boxes
+  const handleCanvasClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!faceData || !displayCanvasRef.current || !videoRef.current) return;
+    
+    const canvas = displayCanvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    
+    // Calculate the clicked position relative to the canvas
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    
+    // Scale the coordinates to match the canvas's internal dimensions
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const clickX = x * scaleX;
+    const clickY = y * scaleY;
+    
+    // Check if click is within any face bounding box
+    for (const face of faceData.faces) {
+      const { x: boxX, y: boxY, width: boxWidth, height: boxHeight } = face.bounding_box;
+      
+      // Convert normalized coordinates to pixel values
+      const pixelX = boxX * canvas.width;
+      const pixelY = boxY * canvas.height;
+      const pixelWidth = boxWidth * canvas.width;
+      const pixelHeight = boxHeight * canvas.height;
+      
+      // Check if click is inside this box
+      if (
+        clickX >= pixelX && 
+        clickX <= pixelX + pixelWidth && 
+        clickY >= pixelY && 
+        clickY <= pixelY + pixelHeight
+      ) {
+        // Find student info
+        if (face.recognition_status === "known") {
+          const student = students.find(s => s.id === face.person_id);
+          if (student) {
+            toast.info(`${student.name} - ${face.attention_status}`, {
+              description: face.hand_raising_status.is_hand_raised ? 
+                "Hand is raised" : 
+                `Focus score: ${(face as EnhancedFaceData).attentionMetrics?.focusScore || 0}%`
+            });
+            return;
+          }
+        } else {
+          toast.info("Unrecognized Student", {
+            description: "This student hasn't been identified yet"
+          });
+          return;
+        }
+      }
+    }
+  }, [faceData, students]);
+
   // Return JSX for the component with enhanced slides and detection info
   return (
     <div className="flex flex-col h-full">
@@ -897,6 +952,18 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                       Simulate
                     </Button>
                   </div>
+                  
+                  <div className="mt-4 pt-4 border-t">
+                    <Button
+                      variant="destructive"
+                      onClick={endLecture}
+                      className="w-full"
+                      disabled={isLoading}
+                    >
+                      <Square className="mr-2 h-4 w-4" />
+                      Stop Lecture
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -920,7 +987,8 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
               
               <canvas
                 ref={displayCanvasRef}
-                className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                className="absolute top-0 left-0 w-full h-full"
+                onClick={handleCanvasClick}
               />
               
               {/* Hidden canvas for processing */}
