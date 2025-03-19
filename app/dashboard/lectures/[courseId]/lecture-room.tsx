@@ -833,20 +833,20 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   // Return JSX for the component with enhanced slides and detection info
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
-        {/* Left panel - Controls and video */}
-        <div className="space-y-4">
-          <Card>
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4">
+        {/* Left panel - Controls */}
+        <div className="lg:col-span-2 space-y-4">
+          <Card className="h-full">
             <CardHeader>
-              <CardTitle>Lecture Controls</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-lg">Controls</CardTitle>
+              <CardDescription className="text-xs">
                 {lectureStarted 
-                  ? "Lecture in progress. Control your media and detection settings."
-                  : "Start a lecture to begin tracking attendance and engagement."
+                  ? "Lecture in progress"
+                  : "Start a lecture to begin"
                 }
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3">
               {!lectureStarted ? (
                 <Button 
                   onClick={startNewLecture} 
@@ -857,32 +857,32 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                 </Button>
               ) : (
                 <div className="flex flex-col gap-2">
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-col gap-2">
                     <Button 
                       variant={isVideoOn ? "default" : "secondary"} 
                       onClick={toggleVideo}
-                      className="flex-1"
+                      className="w-full"
                     >
                       {isVideoOn ? <VideoOff className="mr-2 h-4 w-4" /> : <Video className="mr-2 h-4 w-4" />}
-                      {isVideoOn ? "Turn Off Camera" : "Turn On Camera"}
+                      {isVideoOn ? "Camera Off" : "Camera On"}
                     </Button>
                     
                     <Button 
                       variant={isAudioOn ? "default" : "secondary"} 
                       onClick={toggleAudio}
-                      className="flex-1"
+                      className="w-full"
                     >
                       {isAudioOn ? <MicOff className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
                       {isAudioOn ? "Mute" : "Unmute"}
                     </Button>
                   </div>
                   
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-col gap-2">
                     {isVideoOn && (
                       <Button
                         variant={isDetecting ? "destructive" : "default"}
                         onClick={isDetecting ? stopFaceDetection : () => startFaceDetection(lectureId!)}
-                        className="flex-1"
+                        className="w-full"
                       >
                         {isDetecting ? "Stop Detection" : "Start Detection"}
                       </Button>
@@ -891,10 +891,10 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                     <Button
                       variant="outline"
                       onClick={simulateDetection}
-                      className="flex-1"
+                      className="w-full"
                     >
                       <Bug className="mr-2 h-4 w-4" />
-                      Simulate Detection
+                      Simulate
                     </Button>
                   </div>
                 </div>
@@ -904,11 +904,11 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
         </div>
         
         {/* Video and Detection Results */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Camera Feed</CardTitle>
+        <Card className="lg:col-span-7">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg">Camera Feed</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             <div className="relative overflow-hidden rounded-md bg-gray-100 aspect-video">
               <video
                 ref={videoRef}
@@ -942,14 +942,14 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
         </Card>
         
         {/* Enhanced Detection Info */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Face Detection</CardTitle>
-            <CardDescription>
-              Student engagement and attendance tracking
+        <Card className="lg:col-span-3">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg">Detection</CardTitle>
+            <CardDescription className="text-xs">
+              Student engagement tracking
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4">
             {!faceData ? (
               <div className="text-center py-8">
                 <Camera className="h-12 w-12 mx-auto text-gray-400" />
@@ -962,18 +962,18 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
             ) : (
               <div className="space-y-4">
                 {/* Enhanced Summary Stats */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-blue-50 p-3 rounded-md text-center">
-                    <p className="text-2xl font-bold text-blue-700">{faceData.total_faces}</p>
-                    <p className="text-sm text-gray-600">Total Faces</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-blue-50 p-2 rounded-md text-center">
+                    <p className="text-xl font-bold text-blue-700">{faceData.total_faces}</p>
+                    <p className="text-xs text-gray-600">Total</p>
                   </div>
-                  <div className="bg-green-50 p-3 rounded-md text-center">
-                    <p className="text-2xl font-bold text-green-700">{faceData.summary.focused_faces}</p>
-                    <p className="text-sm text-gray-600">Focused</p>
+                  <div className="bg-green-50 p-2 rounded-md text-center">
+                    <p className="text-xl font-bold text-green-700">{faceData.summary.focused_faces}</p>
+                    <p className="text-xs text-gray-600">Focused</p>
                   </div>
-                  <div className="bg-yellow-50 p-3 rounded-md text-center">
-                    <div className="text-2xl font-bold text-yellow-700">{faceData.classEngagement}%</div>
-                    <p className="text-sm text-gray-600">Engagement</p>
+                  <div className="bg-yellow-50 p-2 rounded-md text-center">
+                    <div className="text-xl font-bold text-yellow-700">{faceData.classEngagement}%</div>
+                    <p className="text-xs text-gray-600">Engagement</p>
                   </div>
                 </div>
                 
