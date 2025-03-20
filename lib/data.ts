@@ -21,6 +21,50 @@ export interface Student {
   name: string;
   email: string;
   avatar?: string | null;
+  // Relations that might be included when fetching with ?include=all
+  enrollments?: Array<{
+    id: string;
+    courseId: string;
+    studentId: string;
+    status: string;
+    enrolledAt: Date;
+    course?: {
+      id: string;
+      name: string;
+      code: string;
+    };
+  }>;
+  submissionList?: Array<{
+    id: string;
+    score?: number | null;
+    submittedAt: Date;
+    status: string;
+    isLate: boolean;
+    feedback?: string | null;
+    assignmentId: string;
+    studentId: string;
+    assignment?: {
+      id: string;
+      title: string;
+      dueDate: Date;
+      pointsPossible: number;
+    };
+  }>;
+  attendances?: Array<{
+    id: string;
+    status: string;
+    studentId: string;
+    lectureId: string;
+    joinTime?: Date | null;
+    leaveTime?: Date | null;
+  }>;
+  engagements?: Array<{
+    id: string;
+    focusScore: number;
+    engagementLevel: string;
+    lectureId: string;
+    studentId: string;
+  }>;
   // Computed fields
   score: number;
   level: number;
@@ -631,13 +675,39 @@ export async function loadCalendarEvents(): Promise<any[]> {
 }
 
 export async function getStudentsByCourse(courseId: string): Promise<Student[]> {
-  const students = await fetchStudents();
-  return students.filter((student: Student) => student.courseId === courseId);
+  try {
+    const baseUrl = getBaseUrl();
+    const res = await fetch(`${baseUrl}/api/students?courseId=${courseId}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store'
+    });
+    
+    if (!res.ok) throw new Error("Failed to fetch students by course");
+    
+    const students = await res.json();
+    return students;
+  } catch (error) {
+    console.error("Error fetching students by course:", error);
+    return [];
+  }
 }
 
 export async function getCourseById(id: string): Promise<Course | null> {
-  const courses = await fetchCourses();
-  return courses.find((course: Course) => course.id === id) || null;
+  try {
+    const courses = await fetchCourses();
+    const course = courses.find((course: Course) => course.id === id) || null;
+    if (course) {
+      return transformCourseData(course);
+    }
+    return null;
+  } catch (error) {
+    console.error("Error in getCourseById:", error);
+    return null;
+  }
 }
 
 export async function getStudentById(studentId: string): Promise<Student | null> {
@@ -671,10 +741,12 @@ export function formatTime(time: string): string {
 export async function fetchCourses() {
   const baseUrl = getBaseUrl();
   const res = await fetch(`${baseUrl}/api/courses`, {
+    method: 'GET',
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
     },
+    cache: 'no-store'
   });
   if (!res.ok) throw new Error("Failed to fetch courses");
   return res.json();
@@ -682,21 +754,42 @@ export async function fetchCourses() {
 
 export async function fetchStudents() {
   const baseUrl = getBaseUrl();
-  const res = await fetch(`${baseUrl}/api/students`);
+  const res = await fetch(`${baseUrl}/api/students`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    cache: 'no-store'
+  });
   if (!res.ok) throw new Error("Failed to fetch students");
   return res.json();
 }
 
 export async function fetchCalendarEvents() {
   const baseUrl = getBaseUrl();
-  const res = await fetch(`${baseUrl}/api/calendar-events`);
+  const res = await fetch(`${baseUrl}/api/calendar-events`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    cache: 'no-store'
+  });
   if (!res.ok) throw new Error("Failed to fetch calendar events");
   return res.json();
 }
 
 export async function getCurrentUser() {
   const baseUrl = getBaseUrl();
-  const res = await fetch(`${baseUrl}/api/user`);
+  const res = await fetch(`${baseUrl}/api/user`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    cache: 'no-store'
+  });
   if (!res.ok) throw new Error("Failed to fetch user");
   return res.json();
 }
@@ -755,12 +848,14 @@ function calculateStudentAverage(submissions: Submission[], assignments: Assignm
 // Lecture fetching functions
 export async function fetchLectures(courseId?: string) {
   try {
+    const baseUrl = getBaseUrl();
     const url = courseId 
-      ? `/api/lectures?courseId=${courseId}` 
-      : '/api/lectures';
+      ? `${baseUrl}/api/lectures?courseId=${courseId}` 
+      : `${baseUrl}/api/lectures`;
     
     const response = await fetch(url, {
       method: 'GET',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -800,7 +895,8 @@ export async function fetchLecturesByCourse(courseId: string) {
 // Attendance fetching functions
 export async function fetchAttendance(lectureId?: string, studentId?: string) {
   try {
-    let url = '/api/attendance';
+    const baseUrl = getBaseUrl();
+    let url = `${baseUrl}/api/attendance`;
     const params = new URLSearchParams();
     
     if (lectureId) {
@@ -817,6 +913,7 @@ export async function fetchAttendance(lectureId?: string, studentId?: string) {
     
     const response = await fetch(url, {
       method: 'GET',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -892,4 +989,15 @@ export async function updateBulkAttendance(lectureId: string, records: Array<{
     console.error('Error updating attendance records:', error);
     throw error;
   }
+}
+
+// Helper function to transform course data by properly formatting StudentEnrollment to Student
+export function transformCourseData(course: any) {
+  return {
+    ...course,
+    students: Array.isArray(course.students) 
+      ? course.students.map((enrollment: any) => 
+          enrollment.student ? enrollment.student : enrollment)
+      : []
+  };
 } 

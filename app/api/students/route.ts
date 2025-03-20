@@ -5,6 +5,21 @@ import { loadStudents } from "@/lib/data"
 export async function GET(request: NextRequest) {
   try {
     const include = request.nextUrl.searchParams.get('include');
+    const courseId = request.nextUrl.searchParams.get('courseId');
+
+    // Base query
+    let query: any = {};
+
+    // If courseId is provided, get only students enrolled in that course
+    if (courseId) {
+      query = {
+        enrollments: {
+          some: {
+            courseId
+          }
+        }
+      };
+    }
 
     // If include=all is specified, include all relations
     const includeRelations = include === 'all' ? {
@@ -25,9 +40,12 @@ export async function GET(request: NextRequest) {
           badge: true
         }
       }
-    } : undefined;
+    } : {
+      enrollments: true
+    };
 
     const students = await prisma.student.findMany({
+      where: query,
       include: includeRelations
     });
 

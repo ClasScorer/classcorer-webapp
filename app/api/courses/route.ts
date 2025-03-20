@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/app/lib/auth'
+import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import { z } from 'zod'
 
 // Course validation schema
@@ -32,7 +32,11 @@ export async function GET() {
             email: true,
           },
         },
-        students: true,
+        students: {
+          include: {
+            student: true,
+          },
+        },
         lectures: true,
         assignments: true,
         announcements: true,
@@ -40,7 +44,13 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
     })
 
-    return NextResponse.json(courses)
+    // Transform the response to include students directly
+    const transformedCourses = courses.map(course => ({
+      ...course,
+      students: course.students.map(enrollment => enrollment.student)
+    }))
+
+    return NextResponse.json(transformedCourses)
   } catch (error) {
     console.error('[COURSES_GET]', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

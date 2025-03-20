@@ -18,12 +18,22 @@ export default async function CoursesPage() {
   const courses = await prisma.course.findMany({
     where: { instructorId: session.user.id },
     include: {
-      students: true,
+      students: {
+        include: {
+          student: true
+        }
+      },
       lectures: true,
       assignments: true,
     },
     orderBy: { createdAt: 'desc' },
   })
+
+  // Transform the courses to include students directly
+  const transformedCourses = courses.map(course => ({
+    ...course,
+    students: course.students.map(enrollment => enrollment.student)
+  }))
 
   return (
     <div className="p-8">
@@ -36,7 +46,7 @@ export default async function CoursesPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {courses.map((course) => (
+        {transformedCourses.map((course) => (
           <Link key={course.id} href={`/dashboard/courses/${course.id}`}>
             <Card className="hover:bg-muted/50 transition-colors">
               <CardHeader>
@@ -60,7 +70,7 @@ export default async function CoursesPage() {
           </Link>
         ))}
 
-        {courses.length === 0 && (
+        {transformedCourses.length === 0 && (
           <div className="col-span-full text-center py-12">
             <h3 className="text-lg font-semibold mb-2">No courses yet</h3>
             <p className="text-muted-foreground mb-4">

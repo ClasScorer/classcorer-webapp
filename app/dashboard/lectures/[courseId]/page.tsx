@@ -39,8 +39,8 @@ export default function LectureRoomPage() {
         }
 
         setCourse(courseData);
-        setStudents(studentsData);
-        setLectures(lecturesData);
+        setStudents(Array.isArray(studentsData) ? studentsData : []);
+        setLectures(Array.isArray(lecturesData) ? lecturesData : []);
       } catch (error) {
         console.error("Error loading data:", error);
         toast.error("Failed to load course data");
