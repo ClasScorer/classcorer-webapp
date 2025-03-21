@@ -149,12 +149,20 @@ export default function FilterDialog({
                 <SelectValue placeholder="All Courses" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Courses</SelectItem>
-                {courses.map((course) => (
-                  <SelectItem key={course.id} value={course.id}>
-                    {course.name}
-                  </SelectItem>
-                ))}
+                {courses.length > 0 ? (
+                  <>
+                    <SelectItem value="_all">All Courses</SelectItem>
+                    {courses.map((course) => (
+                      <SelectItem key={course.id} value={course.id}>
+                        {course.name}
+                      </SelectItem>
+                    ))}
+                  </>
+                ) : (
+                  <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                    No courses available
+                  </div>
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -202,7 +210,7 @@ export default function FilterDialog({
                 <SelectValue placeholder="Any Engagement" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Any Engagement</SelectItem>
+                <SelectItem value="_any">Any Engagement</SelectItem>
                 <SelectItem value="high">High</SelectItem>
                 <SelectItem value="medium">Medium</SelectItem>
                 <SelectItem value="low">Low</SelectItem>
@@ -216,7 +224,7 @@ export default function FilterDialog({
                 <SelectValue placeholder="Any Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Any Status</SelectItem>
+                <SelectItem value="_any">Any Status</SelectItem>
                 <SelectItem value="Excellent">Excellent</SelectItem>
                 <SelectItem value="Good">Good</SelectItem>
                 <SelectItem value="Needs Help">Needs Help</SelectItem>

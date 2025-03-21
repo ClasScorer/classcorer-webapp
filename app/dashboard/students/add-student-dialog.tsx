@@ -175,11 +175,17 @@ export default function AddStudentDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {courses.map((course) => (
-                        <SelectItem key={course.id} value={course.id}>
-                          {course.name}
-                        </SelectItem>
-                      ))}
+                      {courses.length > 0 ? (
+                        courses.map((course) => (
+                          <SelectItem key={course.id} value={course.id}>
+                            {course.name}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                          No courses available
+                        </div>
+                      )}
                     </SelectContent>
                   </Select>
                   <FormMessage />

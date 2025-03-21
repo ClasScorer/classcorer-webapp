@@ -84,6 +84,8 @@ export default function StudentsPage() {
   const [limit] = useState(20)
   const [totalCount, setTotalCount] = useState(0)
   const totalPages = Math.ceil(totalCount / limit)
+  const [userCourses, setUserCourses] = useState<any[]>([])
+  const [courseLoading, setCourseLoading] = useState(true)
   
   // Filter states
   const [filters, setFilters] = useState({
@@ -102,6 +104,29 @@ export default function StudentsPage() {
     needsHelp: 0
   })
 
+  // Fetch user's courses
+  const fetchUserCourses = useCallback(async () => {
+    setCourseLoading(true);
+    try {
+      const response = await fetch('/api/courses');
+      if (!response.ok) {
+        throw new Error('Failed to fetch courses');
+      }
+      
+      const coursesData = await response.json();
+      setUserCourses(coursesData);
+    } catch (error) {
+      console.error('Error fetching courses:', error);
+    } finally {
+      setCourseLoading(false);
+    }
+  }, []);
+
+  // Load user's courses on component mount
+  useEffect(() => {
+    fetchUserCourses();
+  }, [fetchUserCourses]);
+
   // Debounced search function
   const debouncedSearch = useCallback(
     debounce((value: string) => {
@@ -118,8 +143,19 @@ export default function StudentsPage() {
     debouncedSearch(value);
   };
 
-  // Fetch students with pagination and filters
+  // Fetch students with pagination, filters, and course restriction
   const fetchStudents = useCallback(async () => {
+    // Don't fetch students until we have the course list
+    if (courseLoading) return;
+    
+    // If no courses available, don't fetch students
+    if (userCourses.length === 0) {
+      setStudents([]);
+      setTotalCount(0);
+      setIsLoading(false);
+      return;
+    }
+
     const isInitialLoad = page === 1 && !isLoadingMore;
     
     if (isInitialLoad) {
@@ -139,8 +175,13 @@ export default function StudentsPage() {
         params.append('search', debouncedSearchQuery);
       }
       
-      if (filters.courseId) {
+      // Use selected course filter or restrict to user's courses
+      if (filters.courseId && filters.courseId !== '_all') {
         params.append('courseId', filters.courseId);
+      } else if (userCourses.length > 0) {
+        // If multiple courses, use the first one by default or implement multi-course fetching
+        // This is a simplification - ideally you'd want to handle multiple courses
+        params.append('courseId', userCourses[0].id);
       }
       
       if (filters.minGrade > 0) {
@@ -155,11 +196,11 @@ export default function StudentsPage() {
         params.append('minAttendance', filters.minAttendance.toString());
       }
       
-      if (filters.engagementLevel) {
+      if (filters.engagementLevel && filters.engagementLevel !== '_any') {
         params.append('engagementLevel', filters.engagementLevel);
       }
       
-      if (filters.status) {
+      if (filters.status && filters.status !== '_any') {
         params.append('status', filters.status);
       }
 
@@ -181,7 +222,7 @@ export default function StudentsPage() {
       setIsLoading(false);
       setIsLoadingMore(false);
     }
-  }, [page, limit, debouncedSearchQuery, filters]);
+  }, [page, limit, debouncedSearchQuery, filters, userCourses, courseLoading, isLoadingMore]);
 
   // Calculate grade stats
   const calculateGradeStats = (students: any[]) => {
@@ -388,167 +429,201 @@ export default function StudentsPage() {
         </Card>
       </div>
       
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search students..."
-            className="md:w-[300px]"
-            value={searchQuery}
-            onChange={handleSearchChange}
-          />
-        </div>
-      </div>
-      
-      <Card className="border shadow-sm hover:shadow-md transition-shadow">
-        <CardHeader>
-          <CardTitle>Student Management</CardTitle>
-          <CardDescription>
-            View and manage your students and their performance.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border">
-            {/* Table headers */}
-            <div className="bg-muted/50 px-4 py-3 flex items-center font-medium text-sm">
-              <div className="w-[80px]"></div>
-              <div className="flex-1">Name</div>
-              <div className="flex-1">Email</div>
-              <div className="flex-1">Attendance</div>
-              <div className="flex-1">Status</div>
-              <div className="w-[60px]"></div>
+      {courseLoading ? (
+        <Card className="border shadow-sm hover:shadow-md transition-shadow">
+          <CardContent className="p-8">
+            <div className="flex justify-center items-center space-y-4">
+              <div className="text-center">
+                <Skeleton className="h-6 w-48 mx-auto mb-2" />
+                <Skeleton className="h-4 w-64 mx-auto" />
+              </div>
             </div>
-            
-            {/* Virtualized student list */}
-            <div className="relative">
-              {isLoading && students.length === 0 ? (
-                // Skeleton loading state
-                Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex items-center p-4 border-b">
-                    <div className="w-[80px]">
-                      <Skeleton className="h-12 w-12 rounded-full" />
-                    </div>
-                    <div className="flex-1 font-medium">
-                      <Skeleton className="h-4 w-24" />
-                    </div>
-                    <div className="flex-1">
-                      <Skeleton className="h-4 w-36" />
-                    </div>
-                    <div className="flex-1">
-                      <Skeleton className="h-4 w-20" />
-                    </div>
-                    <div className="flex-1">
-                      <Skeleton className="h-6 w-24" />
-                    </div>
-                    <div className="text-right">
-                      <Skeleton className="h-8 w-8 ml-auto" />
-                    </div>
-                  </div>
-                ))
-              ) : students.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground">
-                  No students found.
-                </div>
-              ) : (
-                <WindowScroller>
-                  {({ height, scrollTop }) => (
-                    <AutoSizer disableHeight>
-                      {({ width }) => (
-                        <List
-                          autoHeight
-                          height={height || 400}
-                          scrollTop={scrollTop}
-                          width={width}
-                          rowHeight={65}
-                          rowCount={students.length}
-                          rowRenderer={rowRenderer}
-                          overscanRowCount={5}
-                        />
-                      )}
-                    </AutoSizer>
-                  )}
-                </WindowScroller>
-              )}
+          </CardContent>
+        </Card>
+      ) : userCourses.length === 0 ? (
+        <Card className="border shadow-sm hover:shadow-md transition-shadow">
+          <CardContent className="p-8">
+            <div className="text-center space-y-4">
+              <BookOpen className="h-12 w-12 mx-auto text-muted-foreground" />
+              <h3 className="text-lg font-medium">No Courses Found</h3>
+              <p className="text-muted-foreground">
+                You don't have any courses assigned. Students will be visible once you have courses.
+              </p>
+              <Button 
+                variant="outline"
+                onClick={() => window.location.href = '/dashboard/courses'}
+              >
+                Go to Courses
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Show filter controls only if courses exist */}
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <Search className="h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search students..."
+                className="md:w-[300px]"
+                value={searchQuery}
+                onChange={handleSearchChange}
+              />
             </div>
           </div>
           
-          <div className="flex items-center justify-between mt-4">
-            <p className="text-sm text-muted-foreground">
-              Showing {students.length} of {totalCount} students
-            </p>
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious 
-                    onClick={goToPrevPage} 
-                    className={cn(page <= 1 || isLoading ? "pointer-events-none opacity-50" : "")}
-                  />
-                </PaginationItem>
+          <Card className="border shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader>
+              <CardTitle>Student Management</CardTitle>
+              <CardDescription>
+                View and manage your students and their performance.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border">
+                {/* Table headers */}
+                <div className="bg-muted/50 px-4 py-3 flex items-center font-medium text-sm">
+                  <div className="w-[80px]"></div>
+                  <div className="flex-1">Name</div>
+                  <div className="flex-1">Email</div>
+                  <div className="flex-1">Attendance</div>
+                  <div className="flex-1">Status</div>
+                  <div className="w-[60px]"></div>
+                </div>
                 
-                {/* First page */}
-                {page > 2 && (
-                  <PaginationItem>
-                    <PaginationLink onClick={() => setPage(1)}>1</PaginationLink>
-                  </PaginationItem>
-                )}
-                
-                {/* Ellipsis for many pages */}
-                {page > 3 && (
-                  <PaginationItem>
-                    <PaginationEllipsis />
-                  </PaginationItem>
-                )}
-                
-                {/* Previous page */}
-                {page > 1 && (
-                  <PaginationItem>
-                    <PaginationLink onClick={() => setPage(page - 1)}>
-                      {page - 1}
-                    </PaginationLink>
-                  </PaginationItem>
-                )}
-                
-                {/* Current page */}
-                <PaginationItem>
-                  <PaginationLink isActive>{page}</PaginationLink>
-                </PaginationItem>
-                
-                {/* Next page */}
-                {page < totalPages && (
-                  <PaginationItem>
-                    <PaginationLink onClick={() => setPage(page + 1)}>
-                      {page + 1}
-                    </PaginationLink>
-                  </PaginationItem>
-                )}
-                
-                {/* Ellipsis for many pages */}
-                {page < totalPages - 2 && (
-                  <PaginationItem>
-                    <PaginationEllipsis />
-                  </PaginationItem>
-                )}
-                
-                {/* Last page */}
-                {page < totalPages - 1 && totalPages > 1 && (
-                  <PaginationItem>
-                    <PaginationLink onClick={() => setPage(totalPages)}>
-                      {totalPages}
-                    </PaginationLink>
-                  </PaginationItem>
-                )}
-                
-                <PaginationItem>
-                  <PaginationNext 
-                    onClick={goToNextPage} 
-                    className={cn(page >= totalPages || isLoading ? "pointer-events-none opacity-50" : "")}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          </div>
-        </CardContent>
-      </Card>
+                {/* Virtualized student list */}
+                <div className="relative">
+                  {isLoading && students.length === 0 ? (
+                    // Skeleton loading state
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <div key={i} className="flex items-center p-4 border-b">
+                        <div className="w-[80px]">
+                          <Skeleton className="h-12 w-12 rounded-full" />
+                        </div>
+                        <div className="flex-1 font-medium">
+                          <Skeleton className="h-4 w-24" />
+                        </div>
+                        <div className="flex-1">
+                          <Skeleton className="h-4 w-36" />
+                        </div>
+                        <div className="flex-1">
+                          <Skeleton className="h-4 w-20" />
+                        </div>
+                        <div className="flex-1">
+                          <Skeleton className="h-6 w-24" />
+                        </div>
+                        <div className="text-right">
+                          <Skeleton className="h-8 w-8 ml-auto" />
+                        </div>
+                      </div>
+                    ))
+                  ) : students.length === 0 ? (
+                    <div className="p-4 text-center text-muted-foreground">
+                      No students found.
+                    </div>
+                  ) : (
+                    <WindowScroller>
+                      {({ height, scrollTop }) => (
+                        <AutoSizer disableHeight>
+                          {({ width }) => (
+                            <List
+                              autoHeight
+                              height={height || 400}
+                              scrollTop={scrollTop}
+                              width={width}
+                              rowHeight={65}
+                              rowCount={students.length}
+                              rowRenderer={rowRenderer}
+                              overscanRowCount={5}
+                            />
+                          )}
+                        </AutoSizer>
+                      )}
+                    </WindowScroller>
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-sm text-muted-foreground">
+                  Showing {students.length} of {totalCount} students
+                </p>
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious 
+                        onClick={goToPrevPage} 
+                        className={cn(page <= 1 || isLoading ? "pointer-events-none opacity-50" : "")}
+                      />
+                    </PaginationItem>
+                    
+                    {/* First page */}
+                    {page > 2 && (
+                      <PaginationItem>
+                        <PaginationLink onClick={() => setPage(1)}>1</PaginationLink>
+                      </PaginationItem>
+                    )}
+                    
+                    {/* Ellipsis for many pages */}
+                    {page > 3 && (
+                      <PaginationItem>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    )}
+                    
+                    {/* Previous page */}
+                    {page > 1 && (
+                      <PaginationItem>
+                        <PaginationLink onClick={() => setPage(page - 1)}>
+                          {page - 1}
+                        </PaginationLink>
+                      </PaginationItem>
+                    )}
+                    
+                    {/* Current page */}
+                    <PaginationItem>
+                      <PaginationLink isActive>{page}</PaginationLink>
+                    </PaginationItem>
+                    
+                    {/* Next page */}
+                    {page < totalPages && (
+                      <PaginationItem>
+                        <PaginationLink onClick={() => setPage(page + 1)}>
+                          {page + 1}
+                        </PaginationLink>
+                      </PaginationItem>
+                    )}
+                    
+                    {/* Ellipsis for many pages */}
+                    {page < totalPages - 2 && (
+                      <PaginationItem>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    )}
+                    
+                    {/* Last page */}
+                    {page < totalPages - 1 && totalPages > 1 && (
+                      <PaginationItem>
+                        <PaginationLink onClick={() => setPage(totalPages)}>
+                          {totalPages}
+                        </PaginationLink>
+                      </PaginationItem>
+                    )}
+                    
+                    <PaginationItem>
+                      <PaginationNext 
+                        onClick={goToNextPage} 
+                        className={cn(page >= totalPages || isLoading ? "pointer-events-none opacity-50" : "")}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
       
       {/* Student Details Dialog */}
       {selectedStudent && (
