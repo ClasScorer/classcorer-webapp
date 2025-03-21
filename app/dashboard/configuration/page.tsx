@@ -25,12 +25,33 @@ export default function ConfigurationPage() {
   // Scoring Settings
   const [participationScore, setParticipationScore] = useState(5)
   const [engagementScore, setEngagementScore] = useState(5)
+  const [attendanceScore, setAttendanceScore] = useState(5)
+  const [answerScore, setAnswerScore] = useState(15)
+  const [talkingBadScore, setTalkingBadScore] = useState(-10)
+  const [attendanceBadScore, setAttendanceBadScore] = useState(-10)
+  const [repeatedBadScore, setRepeatedBadScore] = useState(-20)
+
   
   // Threshold Settings
   const [attendanceThreshold, setAttendanceThreshold] = useState(70)
   const [engagementThreshold, setEngagementThreshold] = useState(60)
   const [atRiskThreshold, setAtRiskThreshold] = useState(60)
+  const [maxScoreThreshold, setMaxScoreThreshold] = useState(100)
+  const [minScoreThreshold, setMinScoreThreshold] = useState(0)
   
+  // Decay Settings
+  const [decayRate, setDecayRate] = useState(0.5)
+  const [decayInterval, setDecayInterval] = useState(1)
+  const [decayThreshold, setDecayThreshold] = useState(0.5)
+
+  // Bonuses Settings
+  const [enableThreeStreak, setEnableThreeStreak] = useState(true)
+  const [threeStreakBonus, setThreeStreakBonus] = useState(10)
+  const [enableFiveStreak, setEnableFiveStreak] = useState(true)
+  const [fiveStreakBonus, setFiveStreakBonus] = useState(20)
+  const [constantEngagementBonus, setConstantEngagementBonus] = useState(20)
+
+
   // Deadzone Settings
   // const [deadzones, setDeadzones] = useState([
   //   { start: "12:00", end: "13:00", enabled: true },
@@ -52,6 +73,10 @@ export default function ConfigurationPage() {
             <Target className="h-4 w-4" />
             Scoring
           </TabsTrigger>
+          <TabsTrigger value="decay" className="flex items-center gap-2">
+            <Settings className="h-4 w-4" />
+            Decay
+          </TabsTrigger>
           <TabsTrigger value="thresholds" className="flex items-center gap-2">
             <Settings className="h-4 w-4" />
             Thresholds
@@ -59,6 +84,10 @@ export default function ConfigurationPage() {
           <TabsTrigger value="deadzones" className="flex items-center gap-2">
             <Clock className="h-4 w-4" />
             Deadzones
+          </TabsTrigger>
+          <TabsTrigger value="bonuses" className="flex items-center gap-2">
+            <Zap className="h-4 w-4" />
+            Bonuses
           </TabsTrigger>
           <TabsTrigger value="advanced" className="flex items-center gap-2">
             <Zap className="h-4 w-4" />
@@ -109,6 +138,148 @@ export default function ConfigurationPage() {
                   />
                   <p className="text-sm text-muted-foreground mt-1">
                     Points awarded per minute of active engagement
+                  </p>
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <Label>Score for Attendance</Label>
+                    <span className="text-muted-foreground">{attendanceScore} points</span>
+                  </div>
+                  <Slider
+                    value={[attendanceScore]}
+                    onValueChange={([value]: number[]) => setAttendanceScore(value)}
+                    min={1}
+                    max={10}
+                    step={1}
+                    className="w-full"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Points awarded for each attendance 
+                  </p>
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <Label>Score for Answering a question (You will be prompted to give points)</Label>
+                    <span className="text-muted-foreground">{answerScore} points</span>
+                  </div>
+                  <Slider
+                    value={[answerScore]}
+                    onValueChange={([value]: number[]) => setAnswerScore(value)}
+                    min={1}
+                    max={20}
+                    step={1}
+                    className="w-full"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Points awarded for each attendance 
+                  </p>
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <Label>Score Penalty for Talking in class</Label>
+                    <span className="text-muted-foreground">{talkingBadScore} points</span>
+                  </div>
+                  <Slider
+                    value={[talkingBadScore]}
+                    onValueChange={([value]: number[]) => setTalkingBadScore(value)}
+                    min={-20}
+                    max={0}
+                    step={1}
+                    className="w-full"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Points awarded for each attendance 
+                  </p>
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <Label>Score Penalty for Absence</Label>
+                    <span className="text-muted-foreground">{attendanceBadScore} points</span>
+                  </div>
+                  <Slider
+                    value={[attendanceBadScore]}
+                    onValueChange={([value]: number[]) => setAttendanceBadScore(value)}
+                    min={-20}
+                    max={0}
+                    step={1}
+                    className="w-full"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Points awarded for each attendance 
+                  </p>
+                </div>
+
+                
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="decay" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Decay Configuration</CardTitle>
+              <CardDescription>
+                Configure how scores decay over time
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <Label>Decay Rate</Label>
+                    <span className="text-muted-foreground">{decayRate}</span>
+                  </div>
+                  <Slider
+                    value={[decayRate]}
+                    onValueChange={([value]: number[]) => setDecayRate(value)}
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    className="w-full"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Rate at which scores decay over time
+                  </p>
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <Label>Decay Interval (days)</Label>
+                    <span className="text-muted-foreground">{decayInterval} days</span>
+                  </div>
+                  <Slider
+                    value={[decayInterval]}
+                    onValueChange={([value]: number[]) => setDecayInterval(value)}
+                    min={1}
+                    max={7}
+                    step={1}
+                    className="w-full"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    How often scores decay
+                  </p>
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <Label>Decay Threshold</Label>
+                    <span className="text-muted-foreground">{decayThreshold}</span>
+                  </div>
+                  <Slider
+                    value={[decayThreshold]}
+                    onValueChange={([value]: number[]) => setDecayThreshold(value)}
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    className="w-full"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Minimum threshold for decay to take effect
                   </p>
                 </div>
               </div>
@@ -201,6 +372,92 @@ export default function ConfigurationPage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="bonuses" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Bonus Configuration</CardTitle>
+              <CardDescription>
+                Configure bonuses for consistent performance
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Three-Day Streak Bonus</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Enable bonus for three consecutive days of participation
+                    </p>
+                  </div>
+                  <Switch checked={enableThreeStreak} onCheckedChange={setEnableThreeStreak} />
+                </div>
+
+                {enableThreeStreak && (
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <Label>Three-Day Streak Bonus Amount</Label>
+                      <span className="text-muted-foreground">{threeStreakBonus} points</span>
+                    </div>
+                    <Slider
+                      value={[threeStreakBonus]}
+                      onValueChange={([value]: number[]) => setThreeStreakBonus(value)}
+                      min={5}
+                      max={20}
+                      step={1}
+                      className="w-full"
+                    />
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Five-Day Streak Bonus</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Enable bonus for five consecutive days of participation
+                    </p>
+                  </div>
+                  <Switch checked={enableFiveStreak} onCheckedChange={setEnableFiveStreak} />
+                </div>
+
+                {enableFiveStreak && (
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <Label>Five-Day Streak Bonus Amount</Label>
+                      <span className="text-muted-foreground">{fiveStreakBonus} points</span>
+                    </div>
+                    <Slider
+                      value={[fiveStreakBonus]}
+                      onValueChange={([value]: number[]) => setFiveStreakBonus(value)}
+                      min={10}
+                      max={30}
+                      step={1}
+                      className="w-full"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <div className="flex justify-between mb-2">
+                    <Label>Constant Engagement Bonus</Label>
+                    <span className="text-muted-foreground">{constantEngagementBonus} points</span>
+                  </div>
+                  <Slider
+                    value={[constantEngagementBonus]}
+                    onValueChange={([value]: number[]) => setConstantEngagementBonus(value)}
+                    min={5}
+                    max={30}
+                    step={1}
+                    className="w-full"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Bonus points for maintaining high engagement throughout the class
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="advanced" className="space-y-6">
           <Card>
             <CardHeader>
@@ -252,4 +509,4 @@ export default function ConfigurationPage() {
       </div>
     </div>
   )
-} 
+}
