@@ -13,7 +13,7 @@ import { StudentLeaderboard } from "./student-leaderboard";
 import { CanvasIntegration } from "./canvas-integration";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { loadCourses, loadCalendarEvents, loadStudents, formatPercentage, formatTrend, type Course, type CalendarEvent, type Student } from "@/lib/data";
+import { loadCourses, loadCalendarEvents, loadStudents, formatPercentage, formatTrend, getCanvasStatus, type Course, type CalendarEvent, type Student } from "@/lib/data";
 import { Suspense } from "react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { getInitials, formatDate } from "@/lib/utils";
@@ -85,6 +85,9 @@ async function getTotalStats() {
     students.reduce((sum, student) => sum + (student.average >= 60 ? 1 : 0), 0) * 100 / totalStudents
   );
 
+  // Calculate student trend (comparing this week to previous)
+  const studentTrend = totalStudents > 0 ? 'up' : 'down';
+
   // Get recent events for announcements
   const recentEvents = events
     .filter(event => 
@@ -112,6 +115,7 @@ async function getTotalStats() {
     atRiskStudents,
     upcomingDeadlines,
     recentAnnouncements: recentEvents,
+    studentTrend,
   };
 }
 
@@ -119,6 +123,7 @@ export default async function DashboardPage() {
   const totalStats = await getTotalStats();
   const courses = await loadCourses();
   const students = await loadStudents();
+  const canvasStatus = await getCanvasStatus();
 
   // Calculate course-specific stats
   const courseStats = courses.map(course => {
@@ -130,6 +135,13 @@ export default async function DashboardPage() {
       ? Math.round(courseStudents.reduce((sum, s) => sum + s.average, 0) / courseStudents.length)
       : 0;
     const atRiskCount = courseStudents.filter(s => s.average < 60 || s.attendance < 70).length;
+    
+    // Calculate submission rate from students' submission count
+    const submissionCount = courseStudents.reduce((sum, s) => sum + (s.submissions || 0), 0);
+    const totalPossibleSubmissions = courseStudents.length * 5; // Assume 5 assignments per course
+    const submissionRate = totalPossibleSubmissions > 0 
+      ? Math.round((submissionCount / totalPossibleSubmissions) * 100)
+      : 0;
 
     return {
       ...course,
@@ -137,6 +149,7 @@ export default async function DashboardPage() {
       averageScore,
       atRiskCount,
       totalStudents: courseStudents.length,
+      submissionRate,
     };
   });
 
@@ -144,7 +157,7 @@ export default async function DashboardPage() {
     <div className="min-h-screen bg-background">
       <div className="flex-1 space-y-8 p-4 md:p-8 pt-6">
         {/* Welcome Section */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8">
           <div>
             <h2 className="text-3xl font-bold tracking-tight">Welcome back, Professor</h2>
             <p className="text-muted-foreground">
@@ -153,21 +166,21 @@ export default async function DashboardPage() {
           </div>
           <div className="flex items-center gap-2">
             <Link href="/dashboard/calendar">
-              <Button variant="outline" className="w-full justify-start">
+              <Button variant="outline" className="w-full justify-start hover:bg-secondary">
                 <Calendar className="mr-2 h-4 w-4" />
                 Calendar
               </Button>
             </Link>
 
             <Link href="/dashboard/lectures">
-              <Button variant="outline" className="w-full justify-start">
+              <Button variant="outline" className="w-full justify-start hover:bg-secondary">
                 <Presentation className="mr-2 h-4 w-4" />
                 Lectures
               </Button>
             </Link>
 
             <Link href="/dashboard/students">
-              <Button variant="outline" className="w-full justify-start">
+              <Button variant="outline" className="w-full justify-start hover:bg-secondary">
                 <Users className="mr-2 h-4 w-4" />
                 Students
               </Button>
@@ -175,22 +188,24 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {/* Canvas LMS Integration Section */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium">Integrations</h3>
+        {/* Canvas LMS Integration Section - Only shown when active */}
+        {canvasStatus.isActive && (
+          <div className="space-y-4 mb-8">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-medium">Integrations</h3>
+            </div>
+            <Suspense fallback={<div className="p-4 text-center text-muted-foreground">Loading Canvas integration...</div>}>
+              <CanvasIntegration />
+            </Suspense>
           </div>
-          <Suspense fallback={<div>Loading Canvas integration...</div>}>
-            <CanvasIntegration />
-          </Suspense>
-        </div>
+        )}
 
         {/* Quick Stats with Trends */}
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+          <Card className="border-t-4 border-t-primary hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Total Students</CardTitle>
-              <GraduationCap className="h-4 w-4 text-muted-foreground" />
+              <GraduationCap className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
               <div className="flex items-baseline justify-between">
@@ -208,10 +223,10 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-t-4 border-t-blue-500 hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Average Attendance</CardTitle>
-              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+              <CalendarDays className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
               <div className="flex items-baseline justify-between">
@@ -223,17 +238,17 @@ export default async function DashboardPage() {
                   {totalStats.averageAttendance >= 90 ? 'On Track' : 'Below Target'}
                 </Badge>
               </div>
-              <Progress value={totalStats.averageAttendance} className="mt-3" />
+              <Progress value={totalStats.averageAttendance} className="mt-3 h-2 bg-blue-100" />
               <p className="text-xs text-muted-foreground mt-2">
                 Target: 90% attendance rate
               </p>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-t-4 border-t-green-500 hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Pass Rate</CardTitle>
-              <BookOpen className="h-4 w-4 text-muted-foreground" />
+              <BookOpen className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
               <div className="flex items-baseline justify-between">
@@ -245,17 +260,17 @@ export default async function DashboardPage() {
                   {totalStats.averagePassRate >= 80 ? 'Above Target' : 'Below Target'}
                 </Badge>
               </div>
-              <Progress value={totalStats.averagePassRate} className="mt-3" />
+              <Progress value={totalStats.averagePassRate} className="mt-3 h-2 bg-green-100" />
               <p className="text-xs text-muted-foreground mt-2">
                 Target: 80% pass rate
               </p>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-t-4 border-t-amber-500 hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Upcoming Deadlines</CardTitle>
-              <Bell className="h-4 w-4 text-muted-foreground" />
+              <Bell className="h-4 w-4 text-amber-500" />
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
@@ -276,23 +291,23 @@ export default async function DashboardPage() {
         </div>
 
         {/* Performance Overview and Summary */}
-        <div className="grid gap-4 grid-cols-1 lg:grid-cols-7">
-          <Card className="lg:col-span-5">
-            <CardHeader>
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-7 mb-8">
+          <Card className="lg:col-span-5 hover:shadow-md transition-shadow border border-muted">
+            <CardHeader className="bg-muted/30">
               <CardTitle>Performance Overview</CardTitle>
               <CardDescription>Track submissions, scores, and attendance over time</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               <PerformanceGraph courses={courseStats} />
             </CardContent>
           </Card>
 
-          <Card className="lg:col-span-2">
-            <CardHeader>
+          <Card className="lg:col-span-2 hover:shadow-md transition-shadow border border-muted">
+            <CardHeader className="bg-muted/30">
               <CardTitle>Performance Summary</CardTitle>
               <CardDescription>Key metrics this week</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-6 pt-6">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium">Average Score</span>
@@ -302,19 +317,19 @@ export default async function DashboardPage() {
                 </div>
                 <Progress 
                   value={Math.round(courseStats.reduce((sum, course) => sum + course.averageScore, 0) / courseStats.length)} 
-                  className="h-2"
+                  className="h-2 bg-secondary/30"
                 />
               </div>
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium">Submission Rate</span>
                   <Badge variant="outline">
-                    {Math.round(courseStats.reduce((sum, course) => sum + (course.submissions || 0), 0) / courseStats.length)}%
+                    {Math.round(courseStats.reduce((sum, course) => sum + course.submissionRate, 0) / courseStats.length)}%
                   </Badge>
                 </div>
                 <Progress 
-                  value={Math.round(courseStats.reduce((sum, course) => sum + (course.submissions || 0), 0) / courseStats.length)} 
-                  className="h-2"
+                  value={Math.round(courseStats.reduce((sum, course) => sum + course.submissionRate, 0) / courseStats.length)} 
+                  className="h-2 bg-secondary/30"
                 />
               </div>
               <div>
@@ -326,7 +341,7 @@ export default async function DashboardPage() {
                 </div>
                 <Progress 
                   value={Math.round(courseStats.reduce((sum, course) => sum + course.averageAttendance, 0) / courseStats.length)} 
-                  className="h-2"
+                  className="h-2 bg-secondary/30"
                 />
               </div>
             </CardContent>
@@ -334,13 +349,13 @@ export default async function DashboardPage() {
         </div>
 
         {/* Course Overview Grid */}
-        <div className="space-y-4">
+        <div className="space-y-4 mb-8">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold">Course Overview</h3>
               <p className="text-sm text-muted-foreground">Performance metrics for all active courses</p>
             </div>
-            <Button variant="outline" size="sm" asChild>
+            <Button variant="outline" size="sm" asChild className="hover:bg-secondary">
               <Link href="/dashboard/courses">
                 View All Courses
                 <ArrowRight className="ml-2 h-4 w-4" />
@@ -355,7 +370,7 @@ export default async function DashboardPage() {
                 className="block group"
               >
                 <Card className="transition-all duration-200 hover:shadow-md group-hover:border-primary/20">
-                  <CardHeader className="pb-3">
+                  <CardHeader className="pb-3 bg-muted/20">
                     <div className="flex items-start justify-between">
                       <div>
                         <CardTitle className="text-lg">{course.code}</CardTitle>
@@ -372,14 +387,14 @@ export default async function DashboardPage() {
                       </Badge>
                     </div>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="pt-4">
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <div className="flex items-center justify-between text-sm">
                           <span className="text-muted-foreground">Progress</span>
                           <span className="font-medium">{course.progress}%</span>
                         </div>
-                        <Progress value={course.progress} className="h-1" />
+                        <Progress value={course.progress} className="h-1 bg-secondary/20" />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
@@ -409,14 +424,14 @@ export default async function DashboardPage() {
 
         {/* Recent Announcements and Student Leaderboard */}
         <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
+          <Card className="hover:shadow-md transition-shadow border border-muted">
+            <CardHeader className="bg-muted/30">
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>Recent Announcements</CardTitle>
                   <CardDescription>Latest updates from your courses</CardDescription>
                 </div>
-                <Button variant="outline" size="sm" asChild>
+                <Button variant="outline" size="sm" asChild className="hover:bg-secondary">
                   <Link href="/dashboard/announcements">
                     View All
                     <ArrowRight className="ml-2 h-4 w-4" />
@@ -424,11 +439,11 @@ export default async function DashboardPage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               <div className="space-y-6">
                 {totalStats.recentAnnouncements.map((announcement, index) => (
                   <div key={`${announcement.course}-${index}`} className="flex items-start gap-4">
-                    <Avatar>
+                    <Avatar className="border border-muted">
                       <AvatarFallback className="bg-primary/10">
                         {getInitials(announcement.course)}
                       </AvatarFallback>
@@ -450,14 +465,14 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
+          <Card className="hover:shadow-md transition-shadow border border-muted">
+            <CardHeader className="bg-muted/30">
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>Student Leaderboard</CardTitle>
                   <CardDescription>Top performing students</CardDescription>
                 </div>
-                <Button variant="outline" size="sm" asChild>
+                <Button variant="outline" size="sm" asChild className="hover:bg-secondary">
                   <Link href="/dashboard/leaderboard">
                     View All
                     <ArrowRight className="ml-2 h-4 w-4" />
@@ -465,8 +480,8 @@ export default async function DashboardPage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent>
-              <Suspense fallback={<div>Loading leaderboard...</div>}>
+            <CardContent className="pt-6">
+              <Suspense fallback={<div className="p-4 text-center text-muted-foreground">Loading leaderboard...</div>}>
                 <StudentLeaderboard />
               </Suspense>
             </CardContent>

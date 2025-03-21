@@ -16,8 +16,27 @@ export async function GET() {
   try {
     // Check authentication
     const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    
+    // Enhanced logging for auth debugging
+    console.log('Course API: Auth session check:', { 
+      hasSession: !!session,
+      hasUser: !!session?.user,
+      userId: session?.user?.id || 'not available' 
+    });
+    
+    if (!session) {
+      console.error('Course API: Authentication failed: No session found');
+      return NextResponse.json({ error: 'Unauthorized: No valid session' }, { status: 401 })
+    }
+    
+    if (!session.user) {
+      console.error('Course API: Authentication failed: No valid session user found');
+      return NextResponse.json({ error: 'Unauthorized: No valid session' }, { status: 401 })
+    }
+    
+    if (!session.user.id) {
+      console.error('Course API: Authentication issue: User ID missing in session');
+      return NextResponse.json({ error: 'Unauthorized: User ID missing' }, { status: 401 })
     }
 
     // Get courses for the current instructor
@@ -32,7 +51,11 @@ export async function GET() {
             email: true,
           },
         },
-        students: true,
+        students: {
+          include: {
+            student: true,
+          },
+        },
         lectures: true,
         assignments: true,
         announcements: true,
@@ -40,7 +63,13 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
     })
 
-    return NextResponse.json(courses)
+    // Transform the response to include students directly
+    const transformedCourses = courses.map(course => ({
+      ...course,
+      students: course.students.map(enrollment => enrollment.student)
+    }))
+
+    return NextResponse.json(transformedCourses)
   } catch (error) {
     console.error('[COURSES_GET]', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

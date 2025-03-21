@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/lib/auth";
 
 interface Params {
   params: {
@@ -11,7 +12,7 @@ interface Params {
 // PATCH - Update a lecture's status
 export async function PATCH(request: Request, { params }: Params) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     const { lectureId } = params;
     
     if (!session?.user?.email) {
@@ -75,9 +76,11 @@ export async function PATCH(request: Request, { params }: Params) {
 // DELETE - Remove a lecture and related data
 export async function DELETE(request: Request, { params }: Params) {
   try {
-    const session = await getServerSession();
+    console.log("DELETE lecture: Processing request for", params.lectureId);
+    const session = await getServerSession(authOptions);
     const { lectureId } = params;
     
+    console.log("DELETE lecture: Auth check for lecture", lectureId);
     if (!session?.user?.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -90,6 +93,7 @@ export async function DELETE(request: Request, { params }: Params) {
     }
     
     // Get the lecture to check permissions
+    console.log("DELETE lecture: Fetching lecture", lectureId);
     const lecture = await prisma.lecture.findUnique({
       where: { id: lectureId },
       include: {
@@ -106,6 +110,7 @@ export async function DELETE(request: Request, { params }: Params) {
     }
     
     // Check if the user is the instructor of the course
+    console.log("DELETE lecture: Checking permissions");
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
@@ -119,14 +124,15 @@ export async function DELETE(request: Request, { params }: Params) {
     
     // Delete all related records first (attendance, engagement data, etc.)
     // We use a transaction to ensure all deletions succeed or none do
+    console.log("DELETE lecture: Deleting lecture and related data");
     await prisma.$transaction([
       // Delete attendance records
       prisma.attendance.deleteMany({
         where: { lectureId },
       }),
       
-      // Delete engagement data
-      prisma.engagement.deleteMany({
+      // Delete engagement data - use the correct model name from the schema
+      prisma.studentEngagement.deleteMany({
         where: { lectureId },
       }),
       
@@ -136,9 +142,10 @@ export async function DELETE(request: Request, { params }: Params) {
       }),
     ]);
     
+    console.log("DELETE lecture: Successfully deleted lecture", lectureId);
     return NextResponse.json({ success: true, message: "Lecture deleted successfully" });
   } catch (error) {
     console.error("[LECTURE_DELETE]", error);
-    return NextResponse.json({ error: "Failed to delete lecture" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to delete lecture", details: String(error) }, { status: 500 });
   }
 } 

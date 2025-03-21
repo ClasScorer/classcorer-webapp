@@ -1,12 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/app/lib/prisma'
 import { loadStudents } from "@/lib/data"
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/app/lib/auth'
+import { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
-    const include = request.nextUrl.searchParams.get('include');
+    // Check authentication
+    const session = await getServerSession(authOptions)
+    
+    // Enhanced logging for auth debugging
+    console.log('Students API - Auth session check:', { 
+      hasSession: !!session,
+      hasUser: !!session?.user,
+      userId: session?.user?.id || 'not available' 
+    });
+    
+    if (!session?.user) {
+      console.error('Authentication failed: No valid session user found');
+      return NextResponse.json({ error: 'Unauthorized: No valid session' }, { status: 401 })
+    }
+    
+    if (!session.user.id) {
+      console.error('Authentication issue: User ID missing in session');
+      return NextResponse.json({ error: 'Unauthorized: User ID missing' }, { status: 401 })
+    }
+    
+    // Parse query parameters
+    const searchParams = request.nextUrl.searchParams;
+    const include = searchParams.get('include');
+    const courseId = searchParams.get('courseId');
+    const search = searchParams.get('search');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
+    const minGrade = searchParams.get('minGrade') ? parseInt(searchParams.get('minGrade') || '0') : undefined;
+    const maxGrade = searchParams.get('maxGrade') ? parseInt(searchParams.get('maxGrade') || '100') : undefined;
+    const minAttendance = searchParams.get('minAttendance') ? parseInt(searchParams.get('minAttendance') || '0') : undefined;
+    const engagementLevel = searchParams.get('engagementLevel');
+    const status = searchParams.get('status');
 
-    // If include=all is specified, include all relations
+    // Build where conditions
+    let whereConditions: Prisma.StudentWhereInput = {};
+
+    // Course filter
+    if (courseId) {
+      whereConditions.enrollments = {
+        some: {
+          courseId
+        }
+      };
+    }
+
+    // Text search (name or email)
+    if (search) {
+      whereConditions.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    // Include relations based on request
     const includeRelations = include === 'all' ? {
       enrollments: {
         include: {
@@ -25,13 +79,123 @@ export async function GET(request: NextRequest) {
           badge: true
         }
       }
-    } : undefined;
+    } : {
+      enrollments: true
+    };
 
-    const students = await prisma.student.findMany({
-      include: includeRelations
+    // Get total count for pagination
+    const totalCount = await prisma.student.count({
+      where: whereConditions
     });
 
-    return NextResponse.json(students);
+    // Apply pagination
+    const skip = (page - 1) * limit;
+
+    // Get students with pagination
+    const students = await prisma.student.findMany({
+      where: whereConditions,
+      include: includeRelations,
+      skip,
+      take: limit,
+      orderBy: {
+        name: 'asc'
+      }
+    });
+
+    // Post-process filtering for complex conditions
+    // These filters need the relational data so we do them in memory
+    let filteredStudents = students;
+
+    // Apply grade filter
+    if (minGrade !== undefined || maxGrade !== undefined) {
+      filteredStudents = filteredStudents.filter(student => {
+        const studentSubmissions = student.submissions as any[];
+        if (!Array.isArray(studentSubmissions) || studentSubmissions.length === 0) {
+          return minGrade === 0; // Only include students with no submissions if min grade is 0
+        }
+        
+        const avgGrade = studentSubmissions.reduce((sum, sub) => 
+          sum + (sub.score || 0), 0) / studentSubmissions.length;
+        
+        if (minGrade !== undefined && avgGrade < minGrade) return false;
+        if (maxGrade !== undefined && avgGrade > maxGrade) return false;
+        
+        return true;
+      });
+    }
+
+    // Apply attendance filter
+    if (minAttendance !== undefined) {
+      filteredStudents = filteredStudents.filter(student => {
+        const studentAttendances = student.attendances as any[];
+        if (!Array.isArray(studentAttendances) || studentAttendances.length === 0) {
+          return minAttendance === 0; // Only include students with no attendance if min attendance is 0
+        }
+        
+        const presentCount = studentAttendances.filter(att => att.status === 'PRESENT').length;
+        const attendanceRate = (presentCount / studentAttendances.length) * 100;
+        
+        return attendanceRate >= minAttendance;
+      });
+    }
+
+    // Apply engagement level filter
+    if (engagementLevel) {
+      filteredStudents = filteredStudents.filter(student => {
+        const studentEngagements = student.engagements as any[];
+        if (!Array.isArray(studentEngagements) || studentEngagements.length === 0) {
+          return engagementLevel === 'low'; // Students with no engagement are considered low
+        }
+        
+        const avgEngagement = studentEngagements.reduce((sum, eng) => 
+          sum + eng.focusScore, 0) / studentEngagements.length;
+        
+        const level = 
+          avgEngagement >= 80 ? 'high' :
+          avgEngagement >= 50 ? 'medium' : 'low';
+        
+        return level === engagementLevel;
+      });
+    }
+
+    // Apply status filter
+    if (status) {
+      filteredStudents = filteredStudents.filter(student => {
+        const studentSubmissions = student.submissions as any[];
+        if (!Array.isArray(studentSubmissions) || studentSubmissions.length === 0) {
+          return status === 'Needs Help'; // Students with no submissions need help
+        }
+        
+        const avgGrade = studentSubmissions.reduce((sum, sub) => 
+          sum + (sub.score || 0), 0) / studentSubmissions.length;
+        
+        const gradeStatus = 
+          avgGrade >= 85 ? 'Excellent' :
+          avgGrade >= 70 ? 'Good' : 'Needs Help';
+        
+        return gradeStatus === status;
+      });
+    }
+
+    // Adjust count if filtered in memory
+    const filteredCount = filteredStudents.length !== students.length 
+      ? await calculateFilteredCount(
+          whereConditions, 
+          minGrade, 
+          maxGrade, 
+          minAttendance, 
+          engagementLevel || undefined, 
+          status || undefined
+        )
+      : totalCount;
+
+    return NextResponse.json({
+      students: filteredStudents,
+      total: filteredCount,
+      page,
+      limit,
+      totalPages: Math.ceil(filteredCount / limit)
+    });
   } catch (error) {
     console.error("[STUDENTS_GET]", error);
     return NextResponse.json(
@@ -39,6 +203,101 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// Helper function to calculate total count with all filters
+async function calculateFilteredCount(
+  baseWhere: Prisma.StudentWhereInput,
+  minGrade?: number,
+  maxGrade?: number,
+  minAttendance?: number,
+  engagementLevel?: string,
+  status?: string
+): Promise<number> {
+  // For complex filters, we might need to fetch all matching records and count
+  // This is a simplified version and may not be efficient for large datasets
+  // In a real app, you'd use database-specific optimizations
+  
+  const students = await prisma.student.findMany({
+    where: baseWhere,
+    include: {
+      submissions: true,
+      attendances: true,
+      engagements: true
+    }
+  });
+  
+  let filtered = students;
+  
+  // Apply the same filters as in the main query
+  if (minGrade !== undefined || maxGrade !== undefined) {
+    filtered = filtered.filter(student => {
+      const studentSubmissions = student.submissions;
+      if (!studentSubmissions || studentSubmissions.length === 0) {
+        return minGrade === 0;
+      }
+      
+      const avgGrade = studentSubmissions.reduce((sum, sub) => 
+        sum + (sub.score || 0), 0) / studentSubmissions.length;
+      
+      if (minGrade !== undefined && avgGrade < minGrade) return false;
+      if (maxGrade !== undefined && avgGrade > maxGrade) return false;
+      
+      return true;
+    });
+  }
+  
+  if (minAttendance !== undefined) {
+    filtered = filtered.filter(student => {
+      const studentAttendances = student.attendances;
+      if (!studentAttendances || studentAttendances.length === 0) {
+        return minAttendance === 0;
+      }
+      
+      const presentCount = studentAttendances.filter(att => att.status === 'PRESENT').length;
+      const attendanceRate = (presentCount / studentAttendances.length) * 100;
+      
+      return attendanceRate >= minAttendance;
+    });
+  }
+  
+  if (engagementLevel) {
+    filtered = filtered.filter(student => {
+      const studentEngagements = student.engagements;
+      if (!studentEngagements || studentEngagements.length === 0) {
+        return engagementLevel === 'low';
+      }
+      
+      const avgEngagement = studentEngagements.reduce((sum, eng) => 
+        sum + eng.focusScore, 0) / studentEngagements.length;
+      
+      const level = 
+        avgEngagement >= 80 ? 'high' :
+        avgEngagement >= 50 ? 'medium' : 'low';
+      
+      return level === engagementLevel;
+    });
+  }
+  
+  if (status) {
+    filtered = filtered.filter(student => {
+      const studentSubmissions = student.submissions;
+      if (!studentSubmissions || studentSubmissions.length === 0) {
+        return status === 'Needs Help';
+      }
+      
+      const avgGrade = studentSubmissions.reduce((sum, sub) => 
+        sum + (sub.score || 0), 0) / studentSubmissions.length;
+      
+      const gradeStatus = 
+        avgGrade >= 85 ? 'Excellent' :
+        avgGrade >= 70 ? 'Good' : 'Needs Help';
+      
+      return gradeStatus === status;
+    });
+  }
+  
+  return filtered.length;
 }
 
 export async function POST(req: Request) {

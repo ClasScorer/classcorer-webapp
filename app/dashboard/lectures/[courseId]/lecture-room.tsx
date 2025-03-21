@@ -186,6 +186,16 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   const [currentSlide, setCurrentSlide] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [messageInput, setMessageInput] = useState("")
+  
+  // Add state for scheduled time
+  const [scheduleTime, setScheduleTime] = useState<string>(() => {
+    // Set default to current time plus 5 minutes, rounded to nearest 5
+    const now = new Date();
+    now.setMinutes(Math.ceil(now.getMinutes() / 5) * 5);
+    now.setSeconds(0);
+    return now.toISOString().slice(0, 16); // Format: YYYY-MM-DDTHH:MM
+  });
+  const [useScheduledTime, setUseScheduledTime] = useState(false);
 
   // State for face detection
   const [isDetecting, setIsDetecting] = useState(false)
@@ -198,9 +208,10 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   
   // Add state for lecture duration tracking
   const [lectureStartTime, setLectureStartTime] = useState<Date | null>(null)
-  const [elapsedTime, setElapsedTime] = useState(0)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [durationMinutes, setDurationMinutes] = useState(60) // Default 60 minutes
   const [durationInterval, setDurationInterval] = useState<NodeJS.Timeout | null>(null)
+  const [isPaused, setIsPaused] = useState(false)
 
   // Add state for delete confirmation dialog
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
@@ -233,10 +244,22 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   const [historyView, setHistoryView] = useState(false)
 
   // Modified function to start a new lecture and activate detection
-  const startNewLecture = async () => {
+  const startNewLecture = async (scheduledTime?: Date) => {
     try {
       setIsLoading(true);
-      const startTime = new Date();
+      const startTime = scheduledTime || new Date();
+      const now = new Date();
+      
+      // Check if scheduled time is in the past
+      if (scheduledTime && startTime < now) {
+        toast.warning("The scheduled time is in the past. Lecture timing may not be accurate.");
+      }
+      
+      // Check if scheduled time is in the future
+      if (scheduledTime && startTime > now) {
+        const diffMinutes = Math.round((startTime.getTime() - now.getTime()) / 1000 / 60);
+        toast.info(`Lecture is scheduled to start ${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''} from now.`);
+      }
       
       // Create the lecture record in the database
       const response = await fetch("/api/lectures", {
@@ -264,19 +287,10 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       setLectureStarted(true);
       setLectureStartTime(startTime);
       
-      // Start duration timer
-      const interval = setInterval(() => {
-        const now = new Date();
-        const elapsed = Math.floor((now.getTime() - startTime.getTime()) / 1000 / 60); // minutes
-        setElapsedTime(elapsed);
-        
-        // Check if duration exceeded
-        if (elapsed >= durationMinutes) {
-          toast.warning("Lecture duration reached. Consider ending the lecture.");
-        }
-      }, 60000); // Update every minute
-      
-      setDurationInterval(interval);
+      // Reset and start stopwatch
+      setElapsedSeconds(0);
+      setIsPaused(false);
+      startStopwatch();
       
       toast.success("Lecture started successfully");
       
@@ -292,6 +306,51 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       return null;
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Function to start/resume the stopwatch
+  const startStopwatch = () => {
+    // Clear any existing interval first
+    if (durationInterval) {
+      clearInterval(durationInterval);
+    }
+    
+    const interval = setInterval(() => {
+      setElapsedSeconds(prev => {
+        const newSeconds = prev + 1;
+        // Check if duration exceeded
+        if (newSeconds === durationMinutes * 60) {
+          toast.warning("Lecture duration reached. Consider ending the lecture.");
+        }
+        return newSeconds;
+      });
+    }, 1000);
+    
+    setDurationInterval(interval);
+  };
+  
+  // Function to pause the stopwatch
+  const pauseStopwatch = () => {
+    if (durationInterval) {
+      clearInterval(durationInterval);
+      setDurationInterval(null);
+      setIsPaused(true);
+    }
+  };
+  
+  // Function to resume the stopwatch
+  const resumeStopwatch = () => {
+    setIsPaused(false);
+    startStopwatch();
+  };
+
+  // Function to toggle pause/resume
+  const toggleStopwatch = () => {
+    if (isPaused) {
+      resumeStopwatch();
+    } else {
+      pauseStopwatch();
     }
   };
 
@@ -675,7 +734,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     toast.info("Face detection stopped");
   };
 
-  // Function to end lecture - updated to clear the duration timer
+  // Function to end lecture
   const endLecture = async () => {
     // Stop detection
     stopFaceDetection();
@@ -699,7 +758,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     setLectureId(null);
     setAttendanceData({});
     setFaceData(null);
-    setElapsedTime(0);
+    setElapsedSeconds(0);
     setLectureStartTime(null);
   };
 
@@ -976,6 +1035,15 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     const mins = minutes % 60;
     return `${hours > 0 ? `${hours}h ` : ''}${mins}m`;
   };
+  
+  // Format elapsed time as HH:MM:SS
+  const formatElapsedTime = (totalSeconds: number) => {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    
+    return `${hours > 0 ? `${hours}h ` : ''}${minutes}m ${seconds}s`;
+  };
 
   // Return JSX for the component with enhanced slides and detection info
   return (
@@ -988,12 +1056,44 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
               <CardTitle className="text-lg">Controls</CardTitle>
               <CardDescription className="text-xs">
                 {lectureStarted 
-                  ? `Lecture in progress: ${formatDuration(elapsedTime)} / ${formatDuration(durationMinutes)}`
+                  ? `Lecture in progress: ${formatElapsedTime(elapsedSeconds)} / ${formatDuration(durationMinutes)}`
                   : "Start a lecture to begin"
                 }
+                {lectureStarted && lectureStartTime && (
+                  <div className="mt-1">Started: {lectureStartTime.toLocaleString()}</div>
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
+              {/* Add stopwatch display when lecture is running */}
+              {lectureStarted && (
+                <div className="mb-3 bg-gray-50 rounded-lg p-3 text-center">
+                  <div className="text-xs text-gray-500 mb-1">Elapsed Time</div>
+                  <div className="text-2xl font-mono font-semibold">
+                    {String(Math.floor(elapsedSeconds / 3600)).padStart(2, '0')}:
+                    {String(Math.floor((elapsedSeconds % 3600) / 60)).padStart(2, '0')}:
+                    {String(elapsedSeconds % 60).padStart(2, '0')}
+                  </div>
+                  <div className="w-full bg-gray-200 h-1.5 mt-2 rounded-full overflow-hidden">
+                    <div 
+                      className="bg-primary h-full transition-all duration-1000"
+                      style={{ 
+                        width: `${Math.min(100, (elapsedSeconds / (durationMinutes * 60)) * 100)}%`,
+                        backgroundColor: elapsedSeconds > durationMinutes * 60 ? '#f87171' : undefined
+                      }}
+                    />
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-2"
+                    onClick={toggleStopwatch}
+                  >
+                    {isPaused ? "Resume Timer" : "Pause Timer"}
+                  </Button>
+                </div>
+              )}
+              
               {!lectureStarted ? (
                 <div className="space-y-3">
                   <div className="space-y-2">
@@ -1008,10 +1108,44 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                       className="w-full"
                     />
                   </div>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="useScheduledTime"
+                        checked={useScheduledTime}
+                        onChange={(e) => setUseScheduledTime(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                      <label htmlFor="useScheduledTime" className="text-sm font-medium">
+                        Use scheduled time
+                      </label>
+                    </div>
+                    
+                    {useScheduledTime && (
+                      <div className="space-y-1">
+                        <label htmlFor="scheduledTime" className="text-xs text-muted-foreground">
+                          Lecture scheduled for:
+                        </label>
+                        <Input
+                          id="scheduledTime"
+                          type="datetime-local"
+                          value={scheduleTime}
+                          onChange={(e) => setScheduleTime(e.target.value)}
+                          className="w-full"
+                        />
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {scheduleTime && new Date(scheduleTime).toLocaleString()}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
                   <Button 
-                    onClick={startNewLecture} 
+                    onClick={() => startNewLecture(useScheduledTime && scheduleTime ? new Date(scheduleTime) : undefined)} 
                     className="w-full" 
-                    disabled={isLoading}
+                    disabled={isLoading || (useScheduledTime && !scheduleTime)}
                   >
                     {isLoading ? "Starting..." : "Start Lecture"}
                   </Button>

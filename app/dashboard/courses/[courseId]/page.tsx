@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/lib/auth";
+import { CanvasImportButton } from "@/app/components/canvas-import-button";
 
 interface CoursePageProps {
   params: {
@@ -127,6 +128,9 @@ export default async function CoursePage({ params }: CoursePageProps) {
         <div>
           <h1 className="text-3xl font-bold">{course.name}</h1>
           <p className="text-muted-foreground">{course.code}</p>
+        </div>
+        <div>
+          <CanvasImportButton courseId={course.id} />
         </div>
       </div>
 

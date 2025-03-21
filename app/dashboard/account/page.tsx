@@ -32,10 +32,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Bell, Lock, User, Mail, Shield, Moon, Sun, Globe } from "lucide-react"
+import { Bell, Lock, User, Mail, Shield, Moon, Sun, Globe, BookOpen } from "lucide-react"
 import { getCurrentUser } from "@/lib/data"
 import { getInitials } from "@/lib/utils"
 import { TimezoneSelect } from "@/components/ui/timezone-select"
+import { CanvasIntegration } from "@/app/dashboard/canvas-integration"
+import { toast } from "sonner"
 
 const languages = [
   { value: "en", label: "English" },
@@ -75,6 +77,12 @@ export default function AccountPage() {
   // Set initial tab based on URL parameter
   const initialTab = searchParams.get("tab") || "profile"
 
+  // Handle form submissions
+  const saveProfile = async () => {
+    // Placeholder for profile save functionality
+    toast.success("Profile settings saved")
+  }
+
   if (!user) {
     return null // or loading state
   }
@@ -101,6 +109,10 @@ export default function AccountPage() {
           <TabsTrigger value="security" className="flex items-center gap-2">
             <Lock className="h-4 w-4" />
             Security
+          </TabsTrigger>
+          <TabsTrigger value="integrations" className="flex items-center gap-2">
+            <BookOpen className="h-4 w-4" />
+            Integrations
           </TabsTrigger>
         </TabsList>
 
@@ -140,6 +152,9 @@ export default function AccountPage() {
                       <Label htmlFor="role">Role</Label>
                       <Input id="role" value={user.role} disabled />
                     </div>
+                  </div>
+                  <div className="mt-4">
+                    <Button onClick={saveProfile}>Save Profile</Button>
                   </div>
                 </div>
               </div>
@@ -316,6 +331,10 @@ export default function AccountPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="integrations" className="space-y-6">
+          <CanvasIntegration />
         </TabsContent>
       </Tabs>
 

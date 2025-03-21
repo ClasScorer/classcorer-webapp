@@ -1,22 +1,15 @@
 "use client"
 
-import { Metadata } from "next";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Search, Plus, Filter, ArrowUpRight, GraduationCap, BookOpen, Clock, Trophy, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { useState, useEffect } from "react";
-import { fetchStudents, type Student, type Course, fetchCourses } from "@/lib/data";
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Badge } from "@/components/ui/badge"
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { AddStudentDialog } from "./add-student-dialog"
-import { toast } from "sonner"
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import {
   Table,
   TableBody,
@@ -25,438 +18,636 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { StudentDetailsDialog } from "./student-details-dialog"
-import { FilterDialog, type FilterOptions } from "./filter-dialog"
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
+import { 
+  MoreHorizontal, 
+  Search, 
+  Plus, 
+  Filter, 
+  ChevronLeft, 
+  ChevronRight,
+  Award,
+  BookOpen,
+  Users
+} from "lucide-react"
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import StudentDetailsDialog from './student-details-dialog'
+import AddStudentDialog from './add-student-dialog'
+import FilterDialog from './filter-dialog'
+import { Student } from '@prisma/client'
+import { cn } from '@/lib/utils'
+import { AutoSizer, List, WindowScroller } from 'react-virtualized'
+import debounce from 'lodash.debounce'
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination"
 
-// Remove metadata since this is now a client component
-// export const metadata: Metadata = {
-//   title: "Students",
-//   description: "View and manage student information",
-// };
+interface GradeData {
+  excellent: number;
+  good: number;
+  needsHelp: number;
+}
 
-const ITEMS_PER_PAGE = 10;
-
-interface StudentWithUI extends Student {
-  isExpanded?: boolean;
+// Helper function to get status color class
+function getStatusColor(status: string) {
+  switch (status) {
+    case 'Excellent':
+      return 'bg-green-500/20 text-green-700 border-green-700/50'
+    case 'Good':
+      return 'bg-blue-500/20 text-blue-700 border-blue-700/50'
+    case 'Needs Help':
+      return 'bg-red-500/20 text-red-700 border-red-700/50'
+    default:
+      return 'bg-gray-500/20 text-gray-700 border-gray-700/50'
+  }
 }
 
 export default function StudentsPage() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
-  const [detailedStudent, setDetailedStudent] = useState<Student | null>(null);
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [filters, setFilters] = useState<FilterOptions>({
-    courseId: undefined,
-    gradeRange: [0, 100],
-    attendanceThreshold: undefined,
-    engagementLevel: undefined,
-    status: undefined
-  });
+  // State
+  const [students, setStudents] = useState<Student[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
+  const [showStudentDialog, setShowStudentDialog] = useState(false)
+  const [showAddDialog, setShowAddDialog] = useState(false)
+  const [showFilterDialog, setShowFilterDialog] = useState(false)
+  const [page, setPage] = useState(1)
+  const [limit] = useState(20)
+  const [totalCount, setTotalCount] = useState(0)
+  const totalPages = Math.ceil(totalCount / limit)
+  const [userCourses, setUserCourses] = useState<any[]>([])
+  const [courseLoading, setCourseLoading] = useState(true)
+  
+  // Filter states
+  const [filters, setFilters] = useState({
+    courseId: '',
+    minGrade: 0,
+    maxGrade: 100,
+    minAttendance: 0,
+    engagementLevel: '',
+    status: ''
+  })
 
-  // Load students data with all related information
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const [studentsResponse, coursesResponse] = await Promise.all([
-          fetch('/api/students?include=all'),
-          fetch('/api/courses')
-        ]);
+  // Stats data
+  const [gradeData, setGradeData] = useState<GradeData>({
+    excellent: 0,
+    good: 0,
+    needsHelp: 0
+  })
 
-        if (!studentsResponse.ok || !coursesResponse.ok) {
-          throw new Error('Failed to fetch data');
-        }
-
-        const [studentsData, coursesData] = await Promise.all([
-          studentsResponse.json(),
-          coursesResponse.json()
-        ]);
-
-        setStudents(studentsData);
-        setCourses(coursesData);
-      } catch (error) {
-        console.error('Error loading data:', error);
-        toast.error("Failed to load students data");
-      } finally {
-        setLoading(false);
+  // Fetch user's courses
+  const fetchUserCourses = useCallback(async () => {
+    setCourseLoading(true);
+    try {
+      const response = await fetch('/api/courses');
+      if (!response.ok) {
+        throw new Error('Failed to fetch courses');
       }
+      
+      const coursesData = await response.json();
+      setUserCourses(coursesData);
+    } catch (error) {
+      console.error('Error fetching courses:', error);
+    } finally {
+      setCourseLoading(false);
     }
-    fetchData();
   }, []);
 
-  // Filter students based on search query and filters
-  const filteredStudents = students.filter(student => {
-    // Text search
-    const matchesSearch = 
-      student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      student.email.toLowerCase().includes(searchQuery.toLowerCase());
+  // Load user's courses on component mount
+  useEffect(() => {
+    fetchUserCourses();
+  }, [fetchUserCourses]);
 
-    if (!matchesSearch) return false;
+  // Debounced search function
+  const debouncedSearch = useCallback(
+    debounce((value: string) => {
+      setDebouncedSearchQuery(value);
+      setPage(1); // Reset to first page on new search
+    }, 500),
+    []
+  );
 
-    // Course filter
-    if (filters.courseId) {
-      const matchesCourse = Array.isArray(student.enrollments) &&
-        student.enrollments.some(e => e.courseId === filters.courseId);
-      if (!matchesCourse) return false;
+  // Handle search input change
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchQuery(value);
+    debouncedSearch(value);
+  };
+
+  // Fetch students with pagination, filters, and course restriction
+  const fetchStudents = useCallback(async () => {
+    // Don't fetch students until we have the course list
+    if (courseLoading) return;
+    
+    // If no courses available, don't fetch students
+    if (userCourses.length === 0) {
+      setStudents([]);
+      setTotalCount(0);
+      setIsLoading(false);
+      return;
     }
 
-    // Grade filter
-    const studentGrade = Array.isArray(student.submissions) && student.submissions.length > 0
-      ? Math.round(student.submissions.reduce((acc, sub) => acc + (sub.score || 0), 0) / student.submissions.length)
-      : 0;
-    if (studentGrade < filters.gradeRange[0] || studentGrade > filters.gradeRange[1]) return false;
-
-    // Attendance filter
-    if (filters.attendanceThreshold) {
-      const attendanceRate = Array.isArray(student.attendances) && student.attendances.length > 0
-        ? (student.attendances.filter(a => a.status === 'PRESENT').length / student.attendances.length) * 100
-        : 0;
-      if (attendanceRate < filters.attendanceThreshold) return false;
+    const isInitialLoad = page === 1 && !isLoadingMore;
+    
+    if (isInitialLoad) {
+      setIsLoading(true);
+    } else {
+      setIsLoadingMore(true);
     }
 
-    // Engagement filter
-    if (filters.engagementLevel) {
-      const avgEngagement = Array.isArray(student.engagements) && student.engagements.length > 0
-        ? student.engagements.reduce((acc, eng) => acc + eng.focusScore, 0) / student.engagements.length
-        : 0;
-      
-      const engagementLevel = 
-        avgEngagement >= 80 ? 'high' :
-        avgEngagement >= 50 ? 'medium' : 'low';
-      
-      if (engagementLevel !== filters.engagementLevel) return false;
-    }
-
-    // Status filter
-    if (filters.status) {
-      const studentGradeStatus = 
-        studentGrade >= 85 ? 'Excellent' :
-        studentGrade >= 70 ? 'Good' : 'Needs Help';
-      
-      if (studentGradeStatus !== filters.status) return false;
-    }
-
-    return true;
-  });
-
-  // Calculate pagination
-  const totalPages = Math.ceil(filteredStudents.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedStudents = filteredStudents.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-
-  // Stats calculations
-  const totalStudents = students.length;
-  const averageGrade = students.length > 0
-    ? Math.round(students.reduce((acc, s) => {
-        if (!Array.isArray(s.submissions)) return acc;
-        const studentGrade = s.submissions.length > 0
-          ? s.submissions.reduce((sum, sub) => sum + (sub.score || 0), 0) / s.submissions.length
-          : 0;
-        return acc + studentGrade;
-      }, 0) / students.length)
-    : 0;
-
-  const averageAttendance = students.length > 0
-    ? Math.round(students.reduce((acc, s) => {
-        if (!Array.isArray(s.attendances)) return acc;
-        const attendance = s.attendances.length > 0
-          ? (s.attendances.filter(a => a.status === 'PRESENT').length / s.attendances.length) * 100
-          : 0;
-        return acc + attendance;
-      }, 0) / students.length)
-    : 0;
-
-  const activeCourses = new Set(
-    students.flatMap(s => Array.isArray(s.enrollments) ? s.enrollments.map(e => e.courseId) : [])
-  ).size;
-
-  const handleAddStudent = async (studentData: {
-    name: string
-    email: string
-    courseId: string
-  }) => {
     try {
-      const response = await fetch("/api/students", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(studentData),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Failed to add student")
+      // Build query params
+      const params = new URLSearchParams();
+      params.append('include', 'all');
+      params.append('page', page.toString());
+      params.append('limit', limit.toString());
+      
+      if (debouncedSearchQuery) {
+        params.append('search', debouncedSearchQuery);
+      }
+      
+      // Use selected course filter or restrict to user's courses
+      if (filters.courseId && filters.courseId !== '_all') {
+        params.append('courseId', filters.courseId);
+      } else if (userCourses.length > 0) {
+        // If multiple courses, use the first one by default or implement multi-course fetching
+        // This is a simplification - ideally you'd want to handle multiple courses
+        params.append('courseId', userCourses[0].id);
+      }
+      
+      if (filters.minGrade > 0) {
+        params.append('minGrade', filters.minGrade.toString());
+      }
+      
+      if (filters.maxGrade < 100) {
+        params.append('maxGrade', filters.maxGrade.toString());
+      }
+      
+      if (filters.minAttendance > 0) {
+        params.append('minAttendance', filters.minAttendance.toString());
+      }
+      
+      if (filters.engagementLevel && filters.engagementLevel !== '_any') {
+        params.append('engagementLevel', filters.engagementLevel);
+      }
+      
+      if (filters.status && filters.status !== '_any') {
+        params.append('status', filters.status);
       }
 
-      const newStudent = await response.json()
-      setStudents(prev => [...prev, newStudent])
-      toast.success("Student added successfully")
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to add student")
-      throw error
-    }
-  }
-
-  const handleViewDetails = async (studentId: string) => {
-    try {
-      console.log('Fetching details for student:', studentId);
-      const response = await fetch(`/api/students/${studentId}?include=all`);
+      const response = await fetch(`/api/students?${params.toString()}`);
       
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('API Error Response:', errorText);
-        throw new Error(`Failed to fetch student details: ${response.status}`);
+        throw new Error('Failed to fetch students');
       }
-
-      let detailedData;
-      try {
-        detailedData = await response.json();
-      } catch (parseError) {
-        console.error('Failed to parse response:', parseError);
-        toast.error("Invalid response format from server");
-        return;
-      }
-
-      // Validate the response data
-      if (!detailedData || typeof detailedData !== 'object') {
-        toast.error("Invalid student data received");
-        return;
-      }
-
-      setDetailedStudent(detailedData);
-      setIsDetailsOpen(true);
+      
+      const data = await response.json();
+      
+      setStudents(data.students);
+      setTotalCount(data.total);
+      calculateGradeStats(data.students);
+      
     } catch (error) {
-      console.error('Error loading student details:', error);
-      toast.error(error instanceof Error ? error.message : "Failed to load student details");
+      console.error('Error fetching students:', error);
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
     }
-  }
+  }, [page, limit, debouncedSearchQuery, filters, userCourses, courseLoading, isLoadingMore]);
 
-  if (loading) {
+  // Calculate grade stats
+  const calculateGradeStats = (students: any[]) => {
+    let excellent = 0;
+    let good = 0;
+    let needsHelp = 0;
+
+    students.forEach(student => {
+      // Calculate average grade
+      if (student.submissions && student.submissions.length > 0) {
+        const avgGrade = student.submissions.reduce((sum: number, sub: any) => 
+          sum + (sub.score || 0), 0) / student.submissions.length;
+        
+        if (avgGrade >= 85) excellent++;
+        else if (avgGrade >= 70) good++;
+        else needsHelp++;
+      } else {
+        // Students with no submissions are counted as needing help
+        needsHelp++;
+      }
+    });
+
+    setGradeData({ excellent, good, needsHelp });
+  };
+
+  // Effect to fetch students when relevant dependencies change
+  useEffect(() => {
+    fetchStudents();
+  }, [fetchStudents]);
+
+  // Handle student selection
+  const handleStudentClick = (student: Student) => {
+    setSelectedStudent(student);
+    setShowStudentDialog(true);
+  };
+
+  // Handle filter application
+  const applyFilters = (newFilters: any) => {
+    setFilters(newFilters);
+    setPage(1); // Reset to first page when applying filters
+    setShowFilterDialog(false);
+  };
+
+  // Handle pagination
+  const goToNextPage = () => {
+    if (page < totalPages) {
+      setPage(page + 1);
+    }
+  };
+
+  const goToPrevPage = () => {
+    if (page > 1) {
+      setPage(page - 1);
+    }
+  };
+
+  // Memoized functions for student status determination
+  const getStudentStatus = useCallback((student: any) => {
+    if (!student.submissions || student.submissions.length === 0) {
+      return 'Needs Help';
+    }
+    
+    const avgGrade = student.submissions.reduce((sum: number, sub: any) => 
+      sum + (sub.score || 0), 0) / student.submissions.length;
+    
+    if (avgGrade >= 85) return 'Excellent';
+    if (avgGrade >= 70) return 'Good';
+    return 'Needs Help';
+  }, []);
+
+  const getAttendanceRate = useCallback((student: any) => {
+    if (!student.attendances || student.attendances.length === 0) {
+      return 0;
+    }
+    
+    const presentCount = student.attendances.filter((att: any) => 
+      att.status === 'PRESENT').length;
+    
+    return Math.round((presentCount / student.attendances.length) * 100);
+  }, []);
+
+  // Row renderer for virtualized list
+  const rowRenderer = ({ index, key, style }: { index: number, key: string, style: React.CSSProperties }) => {
+    if (isLoading && students.length === 0) {
+      return (
+        <div key={key} style={style} className="flex items-center p-4 border-b">
+          <div className="w-[80px]">
+            <Skeleton className="h-12 w-12 rounded-full" />
+          </div>
+          <div className="flex-1 font-medium">
+            <Skeleton className="h-4 w-24" />
+          </div>
+          <div className="flex-1">
+            <Skeleton className="h-4 w-36" />
+          </div>
+          <div className="flex-1">
+            <Skeleton className="h-4 w-20" />
+          </div>
+          <div className="flex-1">
+            <Skeleton className="h-6 w-24" />
+          </div>
+          <div className="text-right">
+            <Skeleton className="h-8 w-8 ml-auto" />
+          </div>
+        </div>
+      );
+    }
+    
+    const student = students[index];
+    if (!student) return null;
+    
+    const status = getStudentStatus(student);
+    const attendanceRate = getAttendanceRate(student);
+    
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div
+        key={key}
+        style={style}
+        className="flex items-center p-4 border-b cursor-pointer hover:bg-muted/50"
+        onClick={() => handleStudentClick(student)}
+      >
+        <div className="w-[80px]">
+          <Avatar className="h-9 w-9">
+            <AvatarImage src={`https://avatar.vercel.sh/${student.id}`} alt={student.name} />
+            <AvatarFallback>{student.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+          </Avatar>
+        </div>
+        <div className="flex-1 font-medium">{student.name}</div>
+        <div className="flex-1">{student.email}</div>
+        <div className="flex-1">{attendanceRate}%</div>
+        <div className="flex-1">
+          <Badge variant="outline" className={cn("py-1", getStatusColor(status))}>
+            {status}
+          </Badge>
+        </div>
+        <div className="text-right">
+          <Button variant="ghost" size="icon">
+            <MoreHorizontal className="h-4 w-4" />
+            <span className="sr-only">More</span>
+          </Button>
+        </div>
       </div>
     );
-  }
+  };
 
   return (
-    <div className="flex-1 space-y-6 p-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Students</h2>
-          <p className="text-muted-foreground">Manage and monitor student performance across all courses</p>
-        </div>
+    <div className="flex-1 space-y-8 p-4 md:p-8 pt-6">
+      <div className="flex items-center justify-between space-y-2">
+        <h2 className="text-3xl font-bold tracking-tight">Students</h2>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsFilterOpen(true)}
-          >
-            <Filter className="mr-2 h-4 w-4" />
+          <Button variant="outline" size="sm" onClick={() => setShowFilterDialog(true)}>
+            <Filter className="h-4 w-4 mr-2" />
             Filter
           </Button>
-          <AddStudentDialog courses={courses} onAddStudent={handleAddStudent} />
+          <Button size="sm" onClick={() => setShowAddDialog(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Student
+          </Button>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">Total Students</CardTitle>
-            <GraduationCap className="w-4 h-4 text-muted-foreground" />
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card className="border shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Excellent Students
+            </CardTitle>
+            <Award className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalStudents}</div>
+            <div className="text-2xl font-bold">{gradeData.excellent}</div>
             <p className="text-xs text-muted-foreground">
-              Across {activeCourses} courses
+              {totalCount > 0 ? Math.round((gradeData.excellent / totalCount) * 100) : 0}% of students
             </p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">Average Grade</CardTitle>
-            <Trophy className="w-4 h-4 text-muted-foreground" />
+        <Card className="border shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Good Students
+            </CardTitle>
+            <BookOpen className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{averageGrade}%</div>
-            <p className="text-xs text-muted-foreground">Overall class performance</p>
+            <div className="text-2xl font-bold">{gradeData.good}</div>
+            <p className="text-xs text-muted-foreground">
+              {totalCount > 0 ? Math.round((gradeData.good / totalCount) * 100) : 0}% of students
+            </p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">Attendance Rate</CardTitle>
-            <Clock className="w-4 h-4 text-muted-foreground" />
+        <Card className="border shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Students Needing Help
+            </CardTitle>
+            <Users className="h-4 w-4 text-red-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{averageAttendance}%</div>
-            <p className="text-xs text-muted-foreground">Average attendance rate</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium">Active Courses</CardTitle>
-            <BookOpen className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{activeCourses}</div>
-            <p className="text-xs text-muted-foreground">Currently running courses</p>
+            <div className="text-2xl font-bold">{gradeData.needsHelp}</div>
+            <p className="text-xs text-muted-foreground">
+              {totalCount > 0 ? Math.round((gradeData.needsHelp / totalCount) * 100) : 0}% of students
+            </p>
           </CardContent>
         </Card>
       </div>
-
-      {/* Search Bar */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search students..." 
-            className="pl-8" 
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(1);
-            }}
-          />
-        </div>
-        {Object.values(filters).some(v => v !== undefined && v !== null && (Array.isArray(v) ? v[0] !== 0 || v[1] !== 100 : true)) && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setFilters({
-                courseId: undefined,
-                gradeRange: [0, 100],
-                attendanceThreshold: undefined,
-                engagementLevel: undefined,
-                status: undefined
-              });
-              setCurrentPage(1);
-            }}
-          >
-            Clear Filters
-          </Button>
-        )}
-      </div>
-
-      {/* Students Table */}
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Student</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Courses</TableHead>
-                <TableHead>Average Grade</TableHead>
-                <TableHead>Attendance</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedStudents.map((student) => {
-                const studentGrade = Array.isArray(student.submissions) && student.submissions.length > 0
-                  ? Math.round(student.submissions.reduce((acc, sub) => acc + (sub.score || 0), 0) / student.submissions.length)
-                  : null;
-
-                const attendanceRate = Array.isArray(student.attendances) && student.attendances.length > 0
-                  ? Math.round(student.attendances.filter(a => a.status === 'PRESENT').length / student.attendances.length * 100)
-                  : null;
-
-                const courseCount = Array.isArray(student.enrollments) ? student.enrollments.length : 0;
-
-                return (
-                  <TableRow key={student.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleViewDetails(student.id)}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={student.avatar} alt={student.name} />
-                          <AvatarFallback>{student.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
-                        </Avatar>
-                        <span className="font-medium">{student.name}</span>
+      
+      {courseLoading ? (
+        <Card className="border shadow-sm hover:shadow-md transition-shadow">
+          <CardContent className="p-8">
+            <div className="flex justify-center items-center space-y-4">
+              <div className="text-center">
+                <Skeleton className="h-6 w-48 mx-auto mb-2" />
+                <Skeleton className="h-4 w-64 mx-auto" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : userCourses.length === 0 ? (
+        <Card className="border shadow-sm hover:shadow-md transition-shadow">
+          <CardContent className="p-8">
+            <div className="text-center space-y-4">
+              <BookOpen className="h-12 w-12 mx-auto text-muted-foreground" />
+              <h3 className="text-lg font-medium">No Courses Found</h3>
+              <p className="text-muted-foreground">
+                You don't have any courses assigned. Students will be visible once you have courses.
+              </p>
+              <Button 
+                variant="outline"
+                onClick={() => window.location.href = '/dashboard/courses'}
+              >
+                Go to Courses
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Show filter controls only if courses exist */}
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <Search className="h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search students..."
+                className="md:w-[300px]"
+                value={searchQuery}
+                onChange={handleSearchChange}
+              />
+            </div>
+          </div>
+          
+          <Card className="border shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader>
+              <CardTitle>Student Management</CardTitle>
+              <CardDescription>
+                View and manage your students and their performance.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border">
+                {/* Table headers */}
+                <div className="bg-muted/50 px-4 py-3 flex items-center font-medium text-sm">
+                  <div className="w-[80px]"></div>
+                  <div className="flex-1">Name</div>
+                  <div className="flex-1">Email</div>
+                  <div className="flex-1">Attendance</div>
+                  <div className="flex-1">Status</div>
+                  <div className="w-[60px]"></div>
+                </div>
+                
+                {/* Virtualized student list */}
+                <div className="relative">
+                  {isLoading && students.length === 0 ? (
+                    // Skeleton loading state
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <div key={i} className="flex items-center p-4 border-b">
+                        <div className="w-[80px]">
+                          <Skeleton className="h-12 w-12 rounded-full" />
+                        </div>
+                        <div className="flex-1 font-medium">
+                          <Skeleton className="h-4 w-24" />
+                        </div>
+                        <div className="flex-1">
+                          <Skeleton className="h-4 w-36" />
+                        </div>
+                        <div className="flex-1">
+                          <Skeleton className="h-4 w-20" />
+                        </div>
+                        <div className="flex-1">
+                          <Skeleton className="h-6 w-24" />
+                        </div>
+                        <div className="text-right">
+                          <Skeleton className="h-8 w-8 ml-auto" />
+                        </div>
                       </div>
-                    </TableCell>
-                    <TableCell>{student.email}</TableCell>
-                    <TableCell>{courseCount} courses</TableCell>
-                    <TableCell>
-                      {studentGrade !== null ? `${studentGrade}%` : 'N/A'}
-                    </TableCell>
-                    <TableCell>
-                      {attendanceRate !== null ? `${attendanceRate}%` : 'N/A'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={
-                        studentGrade >= 85 ? 'default' :
-                        studentGrade >= 70 ? 'secondary' : 'destructive'
-                      }>
-                        {studentGrade >= 85 ? 'Excellent' :
-                         studentGrade >= 70 ? 'Good' : 'Needs Help'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={(e) => {
-                        e.stopPropagation();
-                        handleViewDetails(student.id);
-                      }}>
-                        View Details
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {/* Pagination */}
-      <div className="flex items-center justify-center space-x-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-          disabled={currentPage === 1}
-        >
-          Previous
-        </Button>
-        <span className="text-sm text-muted-foreground">
-          Page {currentPage} of {totalPages}
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-          disabled={currentPage === totalPages}
-        >
-          Next
-        </Button>
-      </div>
-
+                    ))
+                  ) : students.length === 0 ? (
+                    <div className="p-4 text-center text-muted-foreground">
+                      No students found.
+                    </div>
+                  ) : (
+                    <WindowScroller>
+                      {({ height, scrollTop }) => (
+                        <AutoSizer disableHeight>
+                          {({ width }) => (
+                            <List
+                              autoHeight
+                              height={height || 400}
+                              scrollTop={scrollTop}
+                              width={width}
+                              rowHeight={65}
+                              rowCount={students.length}
+                              rowRenderer={rowRenderer}
+                              overscanRowCount={5}
+                            />
+                          )}
+                        </AutoSizer>
+                      )}
+                    </WindowScroller>
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-sm text-muted-foreground">
+                  Showing {students.length} of {totalCount} students
+                </p>
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious 
+                        onClick={goToPrevPage} 
+                        className={cn(page <= 1 || isLoading ? "pointer-events-none opacity-50" : "")}
+                      />
+                    </PaginationItem>
+                    
+                    {/* First page */}
+                    {page > 2 && (
+                      <PaginationItem>
+                        <PaginationLink onClick={() => setPage(1)}>1</PaginationLink>
+                      </PaginationItem>
+                    )}
+                    
+                    {/* Ellipsis for many pages */}
+                    {page > 3 && (
+                      <PaginationItem>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    )}
+                    
+                    {/* Previous page */}
+                    {page > 1 && (
+                      <PaginationItem>
+                        <PaginationLink onClick={() => setPage(page - 1)}>
+                          {page - 1}
+                        </PaginationLink>
+                      </PaginationItem>
+                    )}
+                    
+                    {/* Current page */}
+                    <PaginationItem>
+                      <PaginationLink isActive>{page}</PaginationLink>
+                    </PaginationItem>
+                    
+                    {/* Next page */}
+                    {page < totalPages && (
+                      <PaginationItem>
+                        <PaginationLink onClick={() => setPage(page + 1)}>
+                          {page + 1}
+                        </PaginationLink>
+                      </PaginationItem>
+                    )}
+                    
+                    {/* Ellipsis for many pages */}
+                    {page < totalPages - 2 && (
+                      <PaginationItem>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    )}
+                    
+                    {/* Last page */}
+                    {page < totalPages - 1 && totalPages > 1 && (
+                      <PaginationItem>
+                        <PaginationLink onClick={() => setPage(totalPages)}>
+                          {totalPages}
+                        </PaginationLink>
+                      </PaginationItem>
+                    )}
+                    
+                    <PaginationItem>
+                      <PaginationNext 
+                        onClick={goToNextPage} 
+                        className={cn(page >= totalPages || isLoading ? "pointer-events-none opacity-50" : "")}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
+      
+      {/* Student Details Dialog */}
+      {selectedStudent && (
+        <StudentDetailsDialog
+          student={selectedStudent}
+          open={showStudentDialog}
+          onOpenChange={setShowStudentDialog}
+        />
+      )}
+      
+      {/* Add Student Dialog */}
+      <AddStudentDialog
+        open={showAddDialog}
+        onOpenChange={setShowAddDialog}
+        onStudentAdded={fetchStudents}
+      />
+      
       {/* Filter Dialog */}
       <FilterDialog
-        open={isFilterOpen}
-        onOpenChange={setIsFilterOpen}
-        courses={courses}
-        initialFilters={filters}
-        onApplyFilters={(newFilters) => {
-          setFilters(newFilters);
-          setCurrentPage(1);
-        }}
-      />
-
-      {/* Student Details Dialog */}
-      <StudentDetailsDialog
-        student={detailedStudent}
-        open={isDetailsOpen}
-        onOpenChange={setIsDetailsOpen}
+        open={showFilterDialog}
+        onOpenChange={setShowFilterDialog}
+        currentFilters={filters}
+        onApplyFilters={applyFilters}
       />
     </div>
-  );
-} 
+  )
+}
