@@ -3,15 +3,16 @@ import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
 import { isCanvasActive, syncCanvasStudents, syncCanvasAssignments, syncCanvasSubmissions } from '@/lib/canvas';
 
-interface RouteParams {
+// Updated type definition to match Next.js 15 requirements
+type RouteContext = {
   params: {
     courseId: string;
   }
 }
 
-export async function POST(request: Request, { params }: RouteParams) {
+export async function POST(request: Request, context: RouteContext) {
   try {
-    const { courseId } = params;
+    const { courseId } = context.params;
     const session = await getServerSession();
     
     if (!session?.user?.email) {
