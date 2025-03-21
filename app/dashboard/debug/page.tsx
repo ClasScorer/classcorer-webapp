@@ -145,476 +145,362 @@ export default function DebugPage() {
   const memoryUsagePercent = getMemoryUsagePercentage();
   
   return (
-    <div className="container py-6 md:py-10 space-y-6 max-w-full">
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold mb-2">Debug Dashboard</h1>
-        <p className="text-muted-foreground">
-          This page provides comprehensive debugging information about your application state.
-        </p>
+    <div className="flex-1 space-y-8 p-4 md:p-8 pt-6">
+      <div className="flex items-center justify-between space-y-2">
+        <h2 className="text-3xl font-bold tracking-tight">Debug Console</h2>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => getServerInfo()}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh Data
+          </Button>
+          <Button variant="outline" size="sm" onClick={clearAllCookies}>
+            <History className="h-4 w-4 mr-2" />
+            Clear Cookies
+          </Button>
+        </div>
       </div>
 
-      <Tabs defaultValue="session" className="w-full">
-        <TabsList className="mb-4 w-full justify-start overflow-auto">
-          <TabsTrigger value="session">Session</TabsTrigger>
-          <TabsTrigger value="server">Server</TabsTrigger>
-          <TabsTrigger value="client">Client</TabsTrigger>
-          <TabsTrigger value="performance">Performance</TabsTrigger>
-          <TabsTrigger value="logs">Logs</TabsTrigger>
-          <TabsTrigger value="tools">Tools</TabsTrigger>
-        </TabsList>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="border shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Server Status</CardTitle>
+            <Terminal className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{serverInfo ? "Online" : "Checking..."}</div>
+            <p className="text-xs text-muted-foreground">
+              Last checked: {serverInfo ? new Date().toLocaleTimeString() : "Never"}
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card className="border shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Memory Usage</CardTitle>
+            <Cpu className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{getMemoryUsagePercentage()}%</div>
+            <Progress value={getMemoryUsagePercentage()} className="h-2 mt-2" />
+          </CardContent>
+        </Card>
+        
+        <Card className="border shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Database Status</CardTitle>
+            <Database className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{serverInfo?.database?.connected ? "Connected" : "Checking..."}</div>
+            <p className="text-xs text-muted-foreground">
+              Provider: {serverInfo?.database?.provider || "Unknown"}
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card className="border shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Auth Status</CardTitle>
+            <Shield className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{status === "authenticated" ? "Active" : "Inactive"}</div>
+            <p className="text-xs text-muted-foreground">
+              Session: {session ? "Valid" : "Not found"}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
 
-        <TabsContent value="session" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle>Authentication Status</CardTitle>
-                  <Badge variant={status === "authenticated" ? "secondary" : "destructive"} className={status === "authenticated" ? "bg-green-500 text-white" : ""}>
-                    {status}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <Tabs defaultValue="system-info" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="system-info">System Info</TabsTrigger>
+          <TabsTrigger value="performance">Performance</TabsTrigger>
+          <TabsTrigger value="auth">Authentication</TabsTrigger>
+          <TabsTrigger value="logs">Logs</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="system-info">
+          <Card className="border shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader>
+              <CardTitle>System Information</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Cpu className="h-5 w-5" /> Server Environment
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {loading ? (
+                      <div className="flex justify-center">Loading server information...</div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-4">
+                        <div>
+                          <h3 className="font-medium mb-2">Runtime</h3>
+                          <div className="space-y-2 text-sm">
+                            <div><strong>Node Version:</strong> {serverInfo?.nodeVersion || "Unknown"}</div>
+                            <div><strong>Environment:</strong> {serverInfo?.nodeEnv || "Unknown"}</div>
+                            <div><strong>Uptime:</strong> {serverInfo?.uptime ? Math.round(serverInfo.uptime / 60) + " minutes" : "Unknown"}</div>
+                          </div>
+                        </div>
+                        <div>
+                          <h3 className="font-medium mb-2">Configuration</h3>
+                          <div className="space-y-2 text-sm">
+                            <div><strong>DATABASE_URL:</strong> {serverInfo?.databaseUrl || "Unknown"}</div>
+                            <div><strong>NEXTAUTH_URL:</strong> {serverInfo?.nextAuthUrl || "Unknown"}</div>
+                          </div>
+                        </div>
+                        <div>
+                          <h3 className="font-medium mb-2">Memory</h3>
+                          <div className="space-y-2 text-sm">
+                            <div><strong>RSS:</strong> {serverInfo?.memory?.rss ? Math.round(serverInfo.memory.rss / 1024 / 1024) + " MB" : "Unknown"}</div>
+                            <div><strong>Heap Total:</strong> {serverInfo?.memory?.heapTotal ? Math.round(serverInfo.memory.heapTotal / 1024 / 1024) + " MB" : "Unknown"}</div>
+                            <div><strong>Heap Used:</strong> {serverInfo?.memory?.heapUsed ? Math.round(serverInfo.memory.heapUsed / 1024 / 1024) + " MB" : "Unknown"}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Database className="h-5 w-5" /> Database Status
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {loading ? (
+                      <div className="flex justify-center">Loading database information...</div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-3 h-3 rounded-full ${serverInfo?.database?.connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                          <div className="font-medium">
+                            {serverInfo?.database?.connected ? 'Connected' : 'Disconnected'}
+                          </div>
+                        </div>
+                        <div className="space-y-2 text-sm">
+                          <div><strong>Type:</strong> {serverInfo?.database?.type || "Unknown"}</div>
+                          <div><strong>Status:</strong> {serverInfo?.database?.connected ? "Healthy" : "Error"}</div>
+                        </div>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          className="mt-4"
+                          onClick={() => {
+                            getServerInfo();
+                            addLogEntry('Database connection check triggered');
+                          }}
+                        >
+                          Check Connection
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Raw Server Data</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-slate-100 dark:bg-slate-900 p-4 rounded-md overflow-auto max-h-80">
+                    <pre className="text-xs whitespace-pre-wrap">
+                      {JSON.stringify(serverInfo, null, 2) || "No server data"}
+                    </pre>
+                  </div>
+                </CardContent>
+              </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="performance">
+          <Card className="border shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader>
+              <CardTitle>Performance Metrics</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {performanceMetrics?.memory?.totalJSHeapSize && (
                   <div>
-                    <h3 className="font-medium mb-2">User Information</h3>
-                    <div className="space-y-2 text-sm">
-                      <div><strong>User ID:</strong> {session?.user?.id || "Not available"}</div>
-                      <div><strong>Name:</strong> {session?.user?.name || "Not available"}</div>
-                      <div><strong>Email:</strong> {session?.user?.email || "Not available"}</div>
-                      <div><strong>Role:</strong> {session?.user?.role || "Not available"}</div>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium">Memory Usage</span>
+                      <span className="text-sm text-muted-foreground">
+                        {Math.round(performanceMetrics.memory.totalJSHeapSize / 1024 / 1024)} MB / 
+                        {Math.round(performanceMetrics.memory.jsHeapSizeLimit / 1024 / 1024)} MB
+                      </span>
+                    </div>
+                    <Progress value={memoryUsagePercent} className="h-2" />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Used: {Math.round(performanceMetrics.memory.usedJSHeapSize / 1024 / 1024)} MB
+                    </p>
+                  </div>
+                )}
+                
+                {performanceMetrics?.navigation?.loadTime && (
+                  <div>
+                    <h3 className="font-medium mb-2">Page Load Time</h3>
+                    <div className="space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-sm">Total Load Time:</span>
+                        <span className="text-sm font-medium">{performanceMetrics.navigation.loadTime}ms</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm">DOM Ready Time:</span>
+                        <span className="text-sm font-medium">{performanceMetrics.navigation.domReadyTime}ms</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm">Connection Time:</span>
+                        <span className="text-sm font-medium">{performanceMetrics.navigation.connectTime}ms</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm">Redirect Time:</span>
+                        <span className="text-sm font-medium">{performanceMetrics.navigation.redirectTime}ms</span>
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <h3 className="font-medium mb-2">Session Details</h3>
-                    <div className="space-y-2 text-sm">
-                      <div><strong>Status:</strong> {status}</div>
-                      <div><strong>Expires:</strong> {session?.expires || "Not available"}</div>
-                      {session?.expires && (
-                        <div><strong>Time Left:</strong> {
-                          new Date(session.expires).getTime() - new Date().getTime() > 0 
-                            ? Math.round((new Date(session.expires).getTime() - new Date().getTime()) / (1000 * 60)) + " minutes" 
-                            : "Expired"
-                        }</div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="auth">
+          <Card className="border shadow-sm hover:shadow-md transition-shadow">
+            <CardHeader>
+              <CardTitle>Authentication Details</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Authentication Status</CardTitle>
+                    <Badge variant={status === "authenticated" ? "secondary" : "destructive"} className={status === "authenticated" ? "bg-green-500 text-white" : ""}>
+                      {status}
+                    </Badge>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <h3 className="font-medium mb-2">User Information</h3>
+                        <div className="space-y-2 text-sm">
+                          <div><strong>User ID:</strong> {session?.user?.id || "Not available"}</div>
+                          <div><strong>Name:</strong> {session?.user?.name || "Not available"}</div>
+                          <div><strong>Email:</strong> {session?.user?.email || "Not available"}</div>
+                          <div><strong>Role:</strong> {session?.user?.role || "Not available"}</div>
+                        </div>
+                      </div>
+                      <div>
+                        <h3 className="font-medium mb-2">Session Details</h3>
+                        <div className="space-y-2 text-sm">
+                          <div><strong>Status:</strong> {status}</div>
+                          <div><strong>Expires:</strong> {session?.expires || "Not available"}</div>
+                          {session?.expires && (
+                            <div><strong>Time Left:</strong> {
+                              new Date(session.expires).getTime() - new Date().getTime() > 0 
+                                ? Math.round((new Date(session.expires).getTime() - new Date().getTime()) / (1000 * 60)) + " minutes" 
+                                : "Expired"
+                            }</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <Button onClick={refreshSession} size="sm" className="flex items-center gap-1">
+                        <RefreshCw className="h-4 w-4" /> Refresh Session
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>JWT Token</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {jwtDecoded ? (
+                        <Accordion type="single" collapsible className="w-full">
+                          <AccordionItem value="claims">
+                            <AccordionTrigger>JWT Claims</AccordionTrigger>
+                            <AccordionContent>
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Claim</TableHead>
+                                    <TableHead>Value</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {Object.entries(jwtDecoded).map(([key, value]) => (
+                                    <TableRow key={key}>
+                                      <TableCell className="font-medium">{key}</TableCell>
+                                      <TableCell className="truncate max-w-[200px]">
+                                        {typeof value === 'object' 
+                                          ? JSON.stringify(value) 
+                                          : String(value)}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </AccordionContent>
+                          </AccordionItem>
+                          <AccordionItem value="lifetime">
+                            <AccordionTrigger>Token Lifetime</AccordionTrigger>
+                            <AccordionContent>
+                              <div className="space-y-2 text-sm">
+                                {jwtDecoded.exp && (
+                                  <>
+                                    <div><strong>Expires At:</strong> {new Date(jwtDecoded.exp * 1000).toLocaleString()}</div>
+                                    <div><strong>Issued At:</strong> {jwtDecoded.iat ? new Date(jwtDecoded.iat * 1000).toLocaleString() : "Not available"}</div>
+                                    <div>
+                                      <strong>Remaining:</strong> {
+                                        jwtDecoded.exp * 1000 > Date.now() 
+                                          ? Math.round((jwtDecoded.exp * 1000 - Date.now()) / (1000 * 60)) + " minutes" 
+                                          : "Expired"
+                                      }
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
+                      ) : (
+                        <div className="text-sm text-muted-foreground">JWT token not available or could not be decoded.</div>
                       )}
                     </div>
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <Button onClick={refreshSession} size="sm" className="flex items-center gap-1">
-                    <RefreshCw className="h-4 w-4" /> Refresh Session
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>JWT Token</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {jwtDecoded ? (
-                    <Accordion type="single" collapsible className="w-full">
-                      <AccordionItem value="claims">
-                        <AccordionTrigger>JWT Claims</AccordionTrigger>
-                        <AccordionContent>
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Claim</TableHead>
-                                <TableHead>Value</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {Object.entries(jwtDecoded).map(([key, value]) => (
-                                <TableRow key={key}>
-                                  <TableCell className="font-medium">{key}</TableCell>
-                                  <TableCell className="truncate max-w-[200px]">
-                                    {typeof value === 'object' 
-                                      ? JSON.stringify(value) 
-                                      : String(value)}
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </AccordionContent>
-                      </AccordionItem>
-                      <AccordionItem value="lifetime">
-                        <AccordionTrigger>Token Lifetime</AccordionTrigger>
-                        <AccordionContent>
-                          <div className="space-y-2 text-sm">
-                            {jwtDecoded.exp && (
-                              <>
-                                <div><strong>Expires At:</strong> {new Date(jwtDecoded.exp * 1000).toLocaleString()}</div>
-                                <div><strong>Issued At:</strong> {jwtDecoded.iat ? new Date(jwtDecoded.iat * 1000).toLocaleString() : "Not available"}</div>
-                                <div>
-                                  <strong>Remaining:</strong> {
-                                    jwtDecoded.exp * 1000 > Date.now() 
-                                      ? Math.round((jwtDecoded.exp * 1000 - Date.now()) / (1000 * 60)) + " minutes" 
-                                      : "Expired"
-                                  }
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        </AccordionContent>
-                      </AccordionItem>
-                    </Accordion>
-                  ) : (
-                    <div className="text-sm text-muted-foreground">JWT token not available or could not be decoded.</div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Raw Session Data</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="bg-slate-100 dark:bg-slate-900 p-4 rounded-md overflow-auto max-h-80">
-                <pre className="text-xs whitespace-pre-wrap">
-                  {JSON.stringify(session, null, 2) || "No session data"}
-                </pre>
+                  </CardContent>
+                </Card>
               </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Raw Session Data</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-slate-100 dark:bg-slate-900 p-4 rounded-md overflow-auto max-h-80">
+                    <pre className="text-xs whitespace-pre-wrap">
+                      {JSON.stringify(session, null, 2) || "No session data"}
+                    </pre>
+                  </div>
+                </CardContent>
+              </Card>
             </CardContent>
           </Card>
         </TabsContent>
-
-        <TabsContent value="server" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Cpu className="h-5 w-5" /> Server Environment
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="flex justify-center">Loading server information...</div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-4">
-                    <div>
-                      <h3 className="font-medium mb-2">Runtime</h3>
-                      <div className="space-y-2 text-sm">
-                        <div><strong>Node Version:</strong> {serverInfo?.nodeVersion || "Unknown"}</div>
-                        <div><strong>Environment:</strong> {serverInfo?.nodeEnv || "Unknown"}</div>
-                        <div><strong>Uptime:</strong> {serverInfo?.uptime ? Math.round(serverInfo.uptime / 60) + " minutes" : "Unknown"}</div>
-                      </div>
-                    </div>
-                    <div>
-                      <h3 className="font-medium mb-2">Configuration</h3>
-                      <div className="space-y-2 text-sm">
-                        <div><strong>DATABASE_URL:</strong> {serverInfo?.databaseUrl || "Unknown"}</div>
-                        <div><strong>NEXTAUTH_URL:</strong> {serverInfo?.nextAuthUrl || "Unknown"}</div>
-                      </div>
-                    </div>
-                    <div>
-                      <h3 className="font-medium mb-2">Memory</h3>
-                      <div className="space-y-2 text-sm">
-                        <div><strong>RSS:</strong> {serverInfo?.memory?.rss ? Math.round(serverInfo.memory.rss / 1024 / 1024) + " MB" : "Unknown"}</div>
-                        <div><strong>Heap Total:</strong> {serverInfo?.memory?.heapTotal ? Math.round(serverInfo.memory.heapTotal / 1024 / 1024) + " MB" : "Unknown"}</div>
-                        <div><strong>Heap Used:</strong> {serverInfo?.memory?.heapUsed ? Math.round(serverInfo.memory.heapUsed / 1024 / 1024) + " MB" : "Unknown"}</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Database className="h-5 w-5" /> Database Status
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="flex justify-center">Loading database information...</div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-3 h-3 rounded-full ${serverInfo?.database?.connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                      <div className="font-medium">
-                        {serverInfo?.database?.connected ? 'Connected' : 'Disconnected'}
-                      </div>
-                    </div>
-                    <div className="space-y-2 text-sm">
-                      <div><strong>Type:</strong> {serverInfo?.database?.type || "Unknown"}</div>
-                      <div><strong>Status:</strong> {serverInfo?.database?.connected ? "Healthy" : "Error"}</div>
-                    </div>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      className="mt-4"
-                      onClick={() => {
-                        getServerInfo();
-                        addLogEntry('Database connection check triggered');
-                      }}
-                    >
-                      Check Connection
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card>
+        
+        <TabsContent value="logs">
+          <Card className="border shadow-sm hover:shadow-md transition-shadow">
             <CardHeader>
-              <CardTitle>Raw Server Data</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="bg-slate-100 dark:bg-slate-900 p-4 rounded-md overflow-auto max-h-80">
-                <pre className="text-xs whitespace-pre-wrap">
-                  {JSON.stringify(serverInfo, null, 2) || "No server data"}
-                </pre>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="client" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Globe className="h-5 w-5" /> Browser Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell className="font-medium">User Agent</TableCell>
-                      <TableCell className="text-xs break-all">{browserInfo?.userAgent}</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Platform</TableCell>
-                      <TableCell>{browserInfo?.platform}</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Language</TableCell>
-                      <TableCell>{browserInfo?.language}</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Timezone</TableCell>
-                      <TableCell>{browserInfo?.timezone}</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Screen</TableCell>
-                      <TableCell>{browserInfo?.screenWidth} x {browserInfo?.screenHeight} ({browserInfo?.pixelRatio}x)</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Online</TableCell>
-                      <TableCell>{browserInfo?.online ? "Yes" : "No"}</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Cookies</TableCell>
-                      <TableCell>{browserInfo?.cookieEnabled ? "Enabled" : "Disabled"}</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Do Not Track</TableCell>
-                      <TableCell>{browserInfo?.doNotTrack || "Not Set"}</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell className="font-medium">Storage</TableCell>
-                      <TableCell>
-                        LocalStorage: {browserInfo?.localStorage ? "Available" : "Unavailable"}, 
-                        SessionStorage: {browserInfo?.sessionStorage ? "Available" : "Unavailable"}
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="h-5 w-5" /> Network & Security
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="font-medium mb-2">Network Status</h3>
-                    <div className="flex items-center gap-2 mb-4">
-                      <div className={`w-3 h-3 rounded-full ${browserInfo?.online ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                      <div className="font-medium">
-                        {browserInfo?.online ? 'Online' : 'Offline'}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="font-medium mb-2">Security Features</h3>
-                    <Table>
-                      <TableBody>
-                        <TableRow>
-                          <TableCell className="font-medium">HTTPS</TableCell>
-                          <TableCell>{window.location.protocol === 'https:' ? "Yes" : "No"}</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-medium">Secure Context</TableCell>
-                          <TableCell>{window.isSecureContext ? "Yes" : "No"}</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-medium">Cookies</TableCell>
-                          <TableCell>{document.cookie ? `${document.cookie.split(';').length} cookies set` : "No cookies"}</TableCell>
-                        </TableRow>
-                        <TableRow>
-                          <TableCell className="font-medium">Authentication</TableCell>
-                          <TableCell>{status === "authenticated" ? "Authenticated" : "Not Authenticated"}</TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="performance" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5" /> Resource Usage
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  {performanceMetrics?.memory?.totalJSHeapSize && (
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-medium">Memory Usage</span>
-                        <span className="text-sm text-muted-foreground">
-                          {Math.round(performanceMetrics.memory.totalJSHeapSize / 1024 / 1024)} MB / 
-                          {Math.round(performanceMetrics.memory.jsHeapSizeLimit / 1024 / 1024)} MB
-                        </span>
-                      </div>
-                      <Progress value={memoryUsagePercent} className="h-2" />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Used: {Math.round(performanceMetrics.memory.usedJSHeapSize / 1024 / 1024)} MB
-                      </p>
-                    </div>
-                  )}
-                  
-                  {performanceMetrics?.navigation?.loadTime && (
-                    <div>
-                      <h3 className="font-medium mb-2">Page Load Time</h3>
-                      <div className="space-y-1">
-                        <div className="flex justify-between">
-                          <span className="text-sm">Total Load Time:</span>
-                          <span className="text-sm font-medium">{performanceMetrics.navigation.loadTime}ms</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm">DOM Ready Time:</span>
-                          <span className="text-sm font-medium">{performanceMetrics.navigation.domReadyTime}ms</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm">Connection Time:</span>
-                          <span className="text-sm font-medium">{performanceMetrics.navigation.connectTime}ms</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-sm">Redirect Time:</span>
-                          <span className="text-sm font-medium">{performanceMetrics.navigation.redirectTime}ms</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5" /> Optimizations
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="font-medium mb-2">Performance Suggestions</h3>
-                    <ul className="space-y-2 text-sm">
-                      <li className="flex items-start gap-2">
-                        <div className="w-4 h-4 rounded-full bg-yellow-400 mt-0.5 flex-shrink-0"></div>
-                        <span>Implement image lazy loading for improved performance</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <div className="w-4 h-4 rounded-full bg-green-500 mt-0.5 flex-shrink-0"></div>
-                        <span>Using Next.js Image optimization</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <div className="w-4 h-4 rounded-full bg-yellow-400 mt-0.5 flex-shrink-0"></div>
-                        <span>Consider implementing server-side caching</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <div className="w-4 h-4 rounded-full bg-green-500 mt-0.5 flex-shrink-0"></div>
-                        <span>Using React component memoization</span>
-                      </li>
-                    </ul>
-                  </div>
-                  
-                  <div>
-                    <h3 className="font-medium mb-2">Browser Features</h3>
-                    <ul className="space-y-2 text-sm">
-                      <li className="flex items-start gap-2">
-                        <div className={`w-4 h-4 rounded-full ${window.localStorage ? 'bg-green-500' : 'bg-red-500'} mt-0.5 flex-shrink-0`}></div>
-                        <span>Local Storage</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <div className={`w-4 h-4 rounded-full ${window.sessionStorage ? 'bg-green-500' : 'bg-red-500'} mt-0.5 flex-shrink-0`}></div>
-                        <span>Session Storage</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <div className={`w-4 h-4 rounded-full ${navigator.serviceWorker ? 'bg-green-500' : 'bg-red-500'} mt-0.5 flex-shrink-0`}></div>
-                        <span>Service Worker API</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <div className={`w-4 h-4 rounded-full ${window.indexedDB ? 'bg-green-500' : 'bg-red-500'} mt-0.5 flex-shrink-0`}></div>
-                        <span>IndexedDB</span>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="logs" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle className="flex items-center gap-2">
-                  <Terminal className="h-5 w-5" /> Application Logs
-                </CardTitle>
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => setLogEntries([])}
-                  >
-                    Clear Logs
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => {
-                      addLogEntry('Manual log entry added');
-                    }}
-                  >
-                    Add Test Log
-                  </Button>
-                </div>
-              </div>
+              <CardTitle>System Logs</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="bg-slate-100 dark:bg-slate-900 p-4 rounded-md overflow-auto h-[400px] font-mono">
@@ -634,82 +520,6 @@ export default function DebugPage() {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="tools" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Session & Auth Tools</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 gap-2">
-                  <Button variant="outline" onClick={refreshSession} className="justify-start">
-                    <RefreshCw className="mr-2 h-4 w-4" /> Refresh Session
-                  </Button>
-                  <Button variant="outline" onClick={() => {
-                    localStorage.removeItem('next-auth.session-token');
-                    sessionStorage.removeItem('next-auth.session-token');
-                    localStorage.removeItem('next-auth.callback-url');
-                    sessionStorage.removeItem('next-auth.callback-url');
-                    toast.success("Auth tokens cleared");
-                    addLogEntry('Auth tokens cleared from storage');
-                  }} className="justify-start">
-                    <Shield className="mr-2 h-4 w-4" /> Clear Auth Tokens
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Storage Tools</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 gap-2">
-                  <Button variant="outline" onClick={() => {
-                    localStorage.clear();
-                    toast.success("Local storage cleared");
-                    addLogEntry('Local storage cleared');
-                  }} className="justify-start">
-                    <History className="mr-2 h-4 w-4" /> Clear Local Storage
-                  </Button>
-                  <Button variant="outline" onClick={() => {
-                    sessionStorage.clear();
-                    toast.success("Session storage cleared");
-                    addLogEntry('Session storage cleared');
-                  }} className="justify-start">
-                    <History className="mr-2 h-4 w-4" /> Clear Session Storage
-                  </Button>
-                  <Button variant="outline" onClick={clearAllCookies} className="justify-start">
-                    <History className="mr-2 h-4 w-4" /> Clear Cookies
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Browser Tools</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 gap-2">
-                  <Button variant="outline" onClick={() => {
-                    location.reload();
-                    addLogEntry('Page reload triggered');
-                  }} className="justify-start">
-                    <RefreshCw className="mr-2 h-4 w-4" /> Reload Page
-                  </Button>
-                  <Button variant="outline" onClick={() => {
-                    window.open('/dashboard', '_blank');
-                    addLogEntry('Opened dashboard in new window');
-                  }} className="justify-start">
-                    <Cpu className="mr-2 h-4 w-4" /> Open in New Window
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
         </TabsContent>
       </Tabs>
     </div>
