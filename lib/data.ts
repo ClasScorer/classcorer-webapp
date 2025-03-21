@@ -743,7 +743,7 @@ export async function fetchCourses() {
       headers: {
         'Content-Type': 'application/json',
       },
-      cache: 'no-store'
+      next: { revalidate: 60 }
     });
     
     if (!res.ok) {
@@ -769,7 +769,7 @@ export async function fetchStudents() {
       headers: {
         'Content-Type': 'application/json',
       },
-      cache: 'no-store'
+      next: { revalidate: 60 }
     });
     
     if (!res.ok) {
@@ -794,7 +794,7 @@ export async function fetchCalendarEvents() {
     headers: {
       'Content-Type': 'application/json',
     },
-    cache: 'no-store'
+    next: { revalidate: 60 }
   });
   
   return res.json();
@@ -809,7 +809,7 @@ export async function getCanvasStatus() {
       headers: {
         'Content-Type': 'application/json',
       },
-      cache: 'no-store'
+      next: { revalidate: 60 }
     });
 
     if (!response.ok) {
@@ -836,7 +836,7 @@ export async function getCurrentUser() {
       headers: {
         'Content-Type': 'application/json',
       },
-      cache: 'no-store'
+      next: { revalidate: 60 }
     });
     
     if (!res.ok) {
@@ -918,7 +918,7 @@ export async function fetchLectures(courseId?: string) {
       headers: {
         'Content-Type': 'application/json',
       },
-      cache: 'no-store'
+      next: { revalidate: 60 }
     });
 
     if (!response.ok) {
@@ -981,7 +981,7 @@ export async function fetchAttendance(lectureId?: string, studentId?: string) {
       headers: {
         'Content-Type': 'application/json',
       },
-      cache: 'no-store'
+      next: { revalidate: 60 }
     });
 
     if (!response.ok) {

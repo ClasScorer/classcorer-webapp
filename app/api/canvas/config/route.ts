@@ -3,6 +3,9 @@ import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
 import { synchronizeCanvasData, saveCanvasConfig, setCanvasConfigActive } from '@/lib/canvas';
 
+// Make this route dynamic to always run on the server
+export const dynamic = 'force-dynamic';
+
 // GET endpoint to retrieve Canvas config
 export async function GET() {
   try {

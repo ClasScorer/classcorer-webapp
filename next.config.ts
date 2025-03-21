@@ -10,6 +10,10 @@ const nextConfig: NextConfig = {
     // Disable TypeScript errors during production build
     ignoreBuildErrors: true,
   },
+  // Optimized for Vercel deployment
+  swcMinify: true,
+  poweredByHeader: false,
+  reactStrictMode: false,
 };
 
 export default nextConfig;

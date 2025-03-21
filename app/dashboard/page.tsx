@@ -19,6 +19,9 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { getInitials, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 
+// Add dynamic configuration for this route - make it dynamic at runtime
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: "Professor Dashboard",
   description: "Course management and student performance analytics dashboard",
