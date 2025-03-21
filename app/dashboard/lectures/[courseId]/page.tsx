@@ -26,17 +26,36 @@ export default function LectureRoomPage() {
     async function loadData() {
       try {
         setIsLoading(true);
-        const [courseData, studentsData, lecturesData] = await Promise.all([
-          getCourseById(courseId),
-          getStudentsByCourse(courseId),
-          fetchLecturesByCourse(courseId)
-        ]);
-
-        if (!courseData) {
+        
+        // Fetch course data first to validate the course exists
+        let courseData;
+        try {
+          courseData = await getCourseById(courseId);
+          if (!courseData) {
+            router.push("/dashboard/lectures");
+            toast.error("Course not found");
+            return;
+          }
+        } catch (error) {
+          console.error("Error fetching course:", error);
           router.push("/dashboard/lectures");
-          toast.error("Course not found");
+          toast.error(`Unable to load course: ${error instanceof Error ? error.message : "Unknown error"}`);
           return;
         }
+        
+        // Now fetch the rest of the data
+        const [studentsData, lecturesData] = await Promise.all([
+          getStudentsByCourse(courseId).catch(error => {
+            console.error("Error fetching students:", error);
+            toast.error("Failed to load students");
+            return [];
+          }),
+          fetchLecturesByCourse(courseId).catch(error => {
+            console.error("Error fetching lectures:", error);
+            toast.error("Failed to load lectures");
+            return [];
+          })
+        ]);
 
         setCourse(courseData);
         setStudents(Array.isArray(studentsData) ? studentsData : []);

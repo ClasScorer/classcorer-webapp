@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/app/lib/prisma'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+import { authOptions } from '@/app/lib/auth'
 import { z } from 'zod'
 
 // Course validation schema
@@ -16,8 +16,22 @@ export async function GET() {
   try {
     // Check authentication
     const session = await getServerSession(authOptions)
+    
+    // Enhanced logging for auth debugging
+    console.log('Auth session check:', { 
+      hasSession: !!session,
+      hasUser: !!session?.user,
+      userId: session?.user?.id || 'not available' 
+    });
+    
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      console.error('Authentication failed: No valid session user found');
+      return NextResponse.json({ error: 'Unauthorized: No valid session' }, { status: 401 })
+    }
+    
+    if (!session.user.id) {
+      console.error('Authentication issue: User ID missing in session');
+      return NextResponse.json({ error: 'Unauthorized: User ID missing' }, { status: 401 })
     }
 
     // Get courses for the current instructor

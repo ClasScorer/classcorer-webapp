@@ -676,23 +676,19 @@ export async function loadCalendarEvents(): Promise<any[]> {
 
 export async function getStudentsByCourse(courseId: string): Promise<Student[]> {
   try {
-    const baseUrl = getBaseUrl();
-    const res = await fetch(`${baseUrl}/api/students?courseId=${courseId}`, {
-      method: 'GET',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      cache: 'no-store'
+    const students = await fetchStudents();
+    if (!Array.isArray(students)) {
+      console.error("Unexpected response format from fetchStudents");
+      return [];
+    }
+    
+    return students.filter((student: Student) => {
+      return student.courseId === courseId || 
+        (student.enrollments && student.enrollments.some(e => e.courseId === courseId));
     });
-    
-    if (!res.ok) throw new Error("Failed to fetch students by course");
-    
-    const students = await res.json();
-    return students;
   } catch (error) {
-    console.error("Error fetching students by course:", error);
-    return [];
+    console.error(`Error in getStudentsByCourse for courseId ${courseId}:`, error);
+    throw new Error(`Failed to get students for course: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -706,7 +702,7 @@ export async function getCourseById(id: string): Promise<Course | null> {
     return null;
   } catch (error) {
     console.error("Error in getCourseById:", error);
-    return null;
+    throw new Error(`Failed to get course: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -740,30 +736,54 @@ export function formatTime(time: string): string {
 // Client-safe data fetching methods
 export async function fetchCourses() {
   const baseUrl = getBaseUrl();
-  const res = await fetch(`${baseUrl}/api/courses`, {
-    method: 'GET',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    cache: 'no-store'
-  });
-  if (!res.ok) throw new Error("Failed to fetch courses");
-  return res.json();
+  try {
+    const res = await fetch(`${baseUrl}/api/courses`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store'
+    });
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      const errorMessage = errorData.error || `Failed to fetch courses: ${res.status} ${res.statusText}`;
+      console.error(errorMessage);
+      throw new Error(errorMessage);
+    }
+    
+    return res.json();
+  } catch (error) {
+    console.error("Error fetching courses:", error);
+    throw error;
+  }
 }
 
 export async function fetchStudents() {
   const baseUrl = getBaseUrl();
-  const res = await fetch(`${baseUrl}/api/students`, {
-    method: 'GET',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    cache: 'no-store'
-  });
-  if (!res.ok) throw new Error("Failed to fetch students");
-  return res.json();
+  try {
+    const res = await fetch(`${baseUrl}/api/students`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store'
+    });
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      const errorMessage = errorData.error || `Failed to fetch students: ${res.status} ${res.statusText}`;
+      console.error(errorMessage);
+      throw new Error(errorMessage);
+    }
+    
+    return res.json();
+  } catch (error) {
+    console.error("Error fetching students:", error);
+    throw error;
+  }
 }
 
 export async function fetchCalendarEvents() {
@@ -782,16 +802,28 @@ export async function fetchCalendarEvents() {
 
 export async function getCurrentUser() {
   const baseUrl = getBaseUrl();
-  const res = await fetch(`${baseUrl}/api/user`, {
-    method: 'GET',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    cache: 'no-store'
-  });
-  if (!res.ok) throw new Error("Failed to fetch user");
-  return res.json();
+  try {
+    const res = await fetch(`${baseUrl}/api/user`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store'
+    });
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      const errorMessage = errorData.error || `Failed to fetch user: ${res.status} ${res.statusText}`;
+      console.error(errorMessage);
+      throw new Error(errorMessage);
+    }
+    
+    return res.json();
+  } catch (error) {
+    console.error("Error fetching current user:", error);
+    throw error;
+  }
 }
 
 // Helper functions
@@ -885,10 +917,15 @@ export async function fetchLectureById(id: string) {
 
 export async function fetchLecturesByCourse(courseId: string) {
   try {
-    return await fetchLectures(courseId);
+    const lectures = await fetchLectures(courseId);
+    if (!Array.isArray(lectures)) {
+      console.error("Unexpected response format from fetchLectures");
+      return [];
+    }
+    return lectures;
   } catch (error) {
-    console.error('Error fetching lectures by course:', error);
-    return [];
+    console.error(`Error fetching lectures for course ${courseId}:`, error);
+    throw new Error(`Failed to fetch lectures: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

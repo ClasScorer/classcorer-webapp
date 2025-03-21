@@ -12,8 +12,10 @@ import {
   Settings2,
   School,
   Trophy,
+  Bug,
   type LucideIcon
 } from "lucide-react"
+import { useSession } from "next-auth/react"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
@@ -25,7 +27,7 @@ import {
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import { type Course, fetchCourses, getCurrentUser } from "@/lib/data"
+import { type Course, fetchCourses } from "@/lib/data"
 
 interface NavItem {
   title: string
@@ -114,6 +116,11 @@ const baseNavMain: Array<NavItem | NavLabel> = [
     url: "/dashboard/configuration",
     icon: Settings2,
   },
+  {
+    title: "Debug",
+    url: "/dashboard/debug",
+    icon: Bug,
+  },
 ]
 
 export function AppSidebar() {
@@ -136,14 +143,25 @@ export function AppSidebar() {
     navMain: baseNavMain,
   })
 
-  useEffect(() => {
-    async function loadData() {
-      const [courses, user] = await Promise.all([
-        fetchCourses(),
-        getCurrentUser(),
-      ])
+  const session = useSession()
 
-      if (user) {
+  useEffect(() => {
+    // Add a small delay to ensure session is initialized
+    const timer = setTimeout(async () => {
+      try {
+        const user = session.data?.user
+        
+        if (!user) {
+          console.log("No user session available yet")
+          return
+        }
+        
+        // Only attempt to fetch courses if user is available
+        const courses = await fetchCourses().catch(err => {
+          console.error("Error fetching courses:", err)
+          return []
+        })
+
         // Update courses in navigation with course IDs
         const updatedNavMain = navData.navMain.map(item => {
           if ('url' in item && item.url === '/dashboard/courses') {
@@ -171,11 +189,13 @@ export function AppSidebar() {
           ],
           navMain: updatedNavMain,
         })
+      } catch (error) {
+        console.error("Error loading sidebar data:", error)
       }
-    }
-
-    loadData()
-  }, [])
+    }, 500) // 500ms delay to ensure session is initialized
+    
+    return () => clearTimeout(timer)
+  }, [session.data])
 
   return (
     <Sidebar collapsible="icon">
