@@ -18,19 +18,24 @@ export async function GET() {
     const session = await getServerSession(authOptions)
     
     // Enhanced logging for auth debugging
-    console.log('Auth session check:', { 
+    console.log('Course API: Auth session check:', { 
       hasSession: !!session,
       hasUser: !!session?.user,
       userId: session?.user?.id || 'not available' 
     });
     
-    if (!session?.user) {
-      console.error('Authentication failed: No valid session user found');
+    if (!session) {
+      console.error('Course API: Authentication failed: No session found');
+      return NextResponse.json({ error: 'Unauthorized: No valid session' }, { status: 401 })
+    }
+    
+    if (!session.user) {
+      console.error('Course API: Authentication failed: No valid session user found');
       return NextResponse.json({ error: 'Unauthorized: No valid session' }, { status: 401 })
     }
     
     if (!session.user.id) {
-      console.error('Authentication issue: User ID missing in session');
+      console.error('Course API: Authentication issue: User ID missing in session');
       return NextResponse.json({ error: 'Unauthorized: User ID missing' }, { status: 401 })
     }
 

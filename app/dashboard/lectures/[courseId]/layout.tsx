@@ -1,4 +1,8 @@
+"use client";
+
 import { Metadata } from "next"
+import { useEffect, useState } from "react"
+import { useParams } from "next/navigation"
 import { getCourseById } from "@/lib/data"
 
 interface LectureRoomLayoutProps {
@@ -8,24 +12,35 @@ interface LectureRoomLayoutProps {
   }
 }
 
-export async function generateMetadata({ params }: LectureRoomLayoutProps): Promise<Metadata> {
-  try {
-    const course = await getCourseById(params.courseId)
-    if (!course) return { title: "Course Not Found" }
-
-    return {
-      title: `Live Lecture - ${course.name}`,
-      description: `Live lecture session for ${course.code}`,
-    }
-  } catch (error) {
-    console.error("Error fetching course data:", error);
-    return { 
-      title: "Error Loading Course",
-      description: "There was an error loading the course data"
-    }
-  }
-}
-
 export default function LectureRoomLayout({ children }: LectureRoomLayoutProps) {
-  return children
+  const params = useParams()
+  const courseId = params.courseId as string
+  const [title, setTitle] = useState<string>("Loading Course...")
+  
+  useEffect(() => {
+    async function loadCourseData() {
+      try {
+        const course = await getCourseById(courseId)
+        if (course) {
+          document.title = `Live Lecture - ${course.name}`
+          setTitle(`Live Lecture - ${course.name}`)
+        } else {
+          document.title = "Course Not Found"
+          setTitle("Course Not Found")
+        }
+      } catch (error) {
+        console.error("Error fetching course data for metadata:", error)
+        document.title = "Error Loading Course"
+        setTitle("Error Loading Course")
+      }
+    }
+    
+    loadCourseData()
+  }, [courseId])
+  
+  return (
+    <>
+      {children}
+    </>
+  )
 } 
