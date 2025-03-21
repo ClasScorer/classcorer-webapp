@@ -13,6 +13,7 @@ import {
   School,
   Trophy,
   Bug,
+  UserCog,
   type LucideIcon
 } from "lucide-react"
 import { useSession } from "next-auth/react"
@@ -110,6 +111,11 @@ const baseNavMain: Array<NavItem | NavLabel> = [
   {
     type: 'label' as const,
     title: 'Settings',
+  },
+  {
+    title: "Account",
+    url: "/dashboard/account",
+    icon: UserCog,
   },
   {
     title: "Configuration",

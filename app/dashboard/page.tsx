@@ -13,7 +13,7 @@ import { StudentLeaderboard } from "./student-leaderboard";
 import { CanvasIntegration } from "./canvas-integration";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { loadCourses, loadCalendarEvents, loadStudents, formatPercentage, formatTrend, type Course, type CalendarEvent, type Student } from "@/lib/data";
+import { loadCourses, loadCalendarEvents, loadStudents, formatPercentage, formatTrend, getCanvasStatus, type Course, type CalendarEvent, type Student } from "@/lib/data";
 import { Suspense } from "react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { getInitials, formatDate } from "@/lib/utils";
@@ -119,6 +119,7 @@ export default async function DashboardPage() {
   const totalStats = await getTotalStats();
   const courses = await loadCourses();
   const students = await loadStudents();
+  const canvasStatus = await getCanvasStatus();
 
   // Calculate course-specific stats
   const courseStats = courses.map(course => {
@@ -175,15 +176,17 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {/* Canvas LMS Integration Section */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium">Integrations</h3>
+        {/* Canvas LMS Integration Section - Only shown when active */}
+        {canvasStatus.isActive && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-medium">Integrations</h3>
+            </div>
+            <Suspense fallback={<div>Loading Canvas integration...</div>}>
+              <CanvasIntegration />
+            </Suspense>
           </div>
-          <Suspense fallback={<div>Loading Canvas integration...</div>}>
-            <CanvasIntegration />
-          </Suspense>
-        </div>
+        )}
 
         {/* Quick Stats with Trends */}
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">

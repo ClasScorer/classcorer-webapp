@@ -8,7 +8,7 @@ import { Search, Plus, Filter, ArrowUpRight, GraduationCap, BookOpen, Clock, Tro
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useState, useEffect } from "react";
-import { fetchStudents, type Student, type Course, fetchCourses } from "@/lib/data";
+import { fetchStudents, type Student, type Course, fetchCourses, getCanvasStatus } from "@/lib/data";
 import {
   Collapsible,
   CollapsibleContent,
@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/table"
 import { StudentDetailsDialog } from "./student-details-dialog"
 import { FilterDialog, type FilterOptions } from "./filter-dialog"
+import { CanvasImportButton } from "@/app/components/canvas-import-button"
 
 // Remove metadata since this is now a client component
 // export const metadata: Metadata = {
@@ -50,6 +51,7 @@ export default function StudentsPage() {
   const [detailedStudent, setDetailedStudent] = useState<Student | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [canvasStatus, setCanvasStatus] = useState({ isActive: false });
   const [filters, setFilters] = useState<FilterOptions>({
     courseId: undefined,
     gradeRange: [0, 100],
@@ -62,9 +64,10 @@ export default function StudentsPage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [studentsResponse, coursesResponse] = await Promise.all([
+        const [studentsResponse, coursesResponse, canvasStatusResponse] = await Promise.all([
           fetch('/api/students?include=all'),
-          fetch('/api/courses')
+          fetch('/api/courses'),
+          getCanvasStatus()
         ]);
 
         if (!studentsResponse.ok || !coursesResponse.ok) {
@@ -78,6 +81,7 @@ export default function StudentsPage() {
 
         setStudents(studentsData);
         setCourses(coursesData);
+        setCanvasStatus(canvasStatusResponse);
       } catch (error) {
         console.error('Error loading data:', error);
         toast.error("Failed to load students data");
@@ -253,6 +257,7 @@ export default function StudentsPage() {
           <p className="text-muted-foreground">Manage and monitor student performance across all courses</p>
         </div>
         <div className="flex items-center gap-2">
+          {canvasStatus.isActive && <CanvasImportButton courseId="all" variant="outline" size="sm" />}
           <Button
             variant="outline"
             size="sm"

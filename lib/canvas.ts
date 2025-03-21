@@ -531,10 +531,26 @@ export function mapCanvasStudentToStudent(canvasStudent: CanvasStudent, canvasCo
 }
 
 // Helper function to calculate student level based on score
-function calculateLevel(score: number): number {
+export function calculateLevel(score: number): number {
   if (score >= 90) return 5;
   if (score >= 80) return 4;
   if (score >= 70) return 3;
   if (score >= 60) return 2;
   return 1;
+}
+
+// Function to check if Canvas integration is active for a user
+export async function isCanvasActive(userId?: string): Promise<boolean> {
+  if (!userId) return false;
+  
+  try {
+    const config = await prisma.canvasConfig.findUnique({
+      where: { userId }
+    });
+    
+    return config?.isActive || false;
+  } catch (error) {
+    console.error('Error checking Canvas active status:', error);
+    return false;
+  }
 } 

@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface CanvasConfig {
   id?: string;
@@ -93,9 +95,11 @@ export function CanvasIntegration() {
       }
       
       setIsConnected(true);
+      toast.success("Successfully connected to Canvas LMS");
     } catch (error) {
       console.error('Error connecting to Canvas:', error);
       setError(error instanceof Error ? error.message : "Failed to connect to Canvas");
+      toast.error(error instanceof Error ? error.message : "Failed to connect to Canvas");
     } finally {
       setIsConnecting(false);
     }
@@ -105,6 +109,7 @@ export function CanvasIntegration() {
     // If enabling Canvas, ensure we're connected first
     if (checked && !isConnected) {
       setError("Please connect to Canvas first");
+      toast.error("Please connect to Canvas first");
       return;
     }
     
@@ -124,15 +129,18 @@ export function CanvasIntegration() {
       
       setUseCanvas(checked);
       setError("");
+      toast.success(`Canvas integration ${checked ? 'enabled' : 'disabled'}`);
     } catch (error) {
       console.error('Error toggling Canvas integration:', error);
       setError(error instanceof Error ? error.message : "Failed to update Canvas integration settings");
+      toast.error(error instanceof Error ? error.message : "Failed to update Canvas integration settings");
     }
   };
   
   const handleSyncData = async () => {
     if (!isConnected) {
       setError("Please connect to Canvas first");
+      toast.error("Please connect to Canvas first");
       return;
     }
     
@@ -157,9 +165,11 @@ export function CanvasIntegration() {
       if (config.lastSyncedAt) {
         setLastSynced(new Date(config.lastSyncedAt).toLocaleString());
       }
+      toast.success("Canvas data synchronized successfully");
     } catch (error) {
       console.error('Error syncing Canvas data:', error);
       setError(error instanceof Error ? error.message : "Failed to synchronize data from Canvas");
+      toast.error(error instanceof Error ? error.message : "Failed to synchronize data from Canvas");
     } finally {
       setIsSyncing(false);
     }
@@ -173,116 +183,123 @@ export function CanvasIntegration() {
           Connect your dashboard to Canvas LMS to import courses, students, and assignments.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            {isConnected ? (
-              <CheckCircle className="h-5 w-5 text-green-500" />
-            ) : (
-              <AlertCircle className="h-5 w-5 text-amber-500" />
-            )}
-            <span>
-              {isConnected ? "Connected to Canvas LMS" : "Not connected to Canvas LMS"}
-            </span>
+            <div className="flex flex-col space-y-1">
+              <Label htmlFor="use-canvas" className="text-base font-medium">Use Canvas Integration</Label>
+              <p className="text-sm text-muted-foreground">
+                {isConnected 
+                  ? "Import data from Canvas instead of using internal data"
+                  : "Connect to Canvas LMS to enable this feature"}
+              </p>
+            </div>
           </div>
-          
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                {isConnected ? "Update Connection" : "Connect to Canvas"}
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>Canvas LMS Integration</DialogTitle>
-                <DialogDescription>
-                  Enter your Canvas LMS API details to connect your dashboard.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="apiUrl" className="text-right">
-                    API URL
-                  </Label>
-                  <Input
-                    id="apiUrl"
-                    value={apiUrl}
-                    onChange={(e) => setApiUrl(e.target.value)}
-                    placeholder="https://canvas.instructure.com/api/v1"
-                    className="col-span-3"
-                  />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="apiToken" className="text-right">
-                    API Token
-                  </Label>
-                  <Input
-                    id="apiToken"
-                    value={apiToken}
-                    onChange={(e) => setApiToken(e.target.value)}
-                    type="password"
-                    placeholder="Canvas API token"
-                    className="col-span-3"
-                  />
-                </div>
-                {error && (
-                  <div className="text-red-500 text-sm mt-2">{error}</div>
-                )}
-              </div>
-              <DialogFooter>
-                <Button type="submit" onClick={handleConnect} disabled={isConnecting}>
-                  {isConnecting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {isConnecting ? "Connecting..." : "Connect"}
+          <Switch 
+            id="use-canvas" 
+            checked={useCanvas}
+            disabled={!isConnected}
+            onCheckedChange={handleToggleCanvas}
+          />
+        </div>
+        
+        <div className="border-t pt-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              {isConnected ? (
+                <CheckCircle className="h-5 w-5 text-green-500" />
+              ) : (
+                <AlertCircle className="h-5 w-5 text-amber-500" />
+              )}
+              <span>
+                {isConnected ? "Connected to Canvas LMS" : "Not connected to Canvas LMS"}
+              </span>
+            </div>
+            
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  {isConnected ? "Update Connection" : "Connect to Canvas"}
                 </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Canvas LMS Integration</DialogTitle>
+                  <DialogDescription>
+                    Enter your Canvas LMS API details to connect your dashboard.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="apiUrl" className="text-right">
+                      API URL
+                    </Label>
+                    <Input
+                      id="apiUrl"
+                      value={apiUrl}
+                      onChange={(e) => setApiUrl(e.target.value)}
+                      placeholder="https://canvas.instructure.com/api/v1"
+                      className="col-span-3"
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="apiToken" className="text-right">
+                      API Token
+                    </Label>
+                    <Input
+                      id="apiToken"
+                      value={apiToken}
+                      onChange={(e) => setApiToken(e.target.value)}
+                      type="password"
+                      placeholder="Canvas API token"
+                      className="col-span-3"
+                    />
+                  </div>
+                  {error && (
+                    <div className="text-red-500 text-sm mt-2">{error}</div>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button type="submit" onClick={handleConnect} disabled={isConnecting}>
+                    {isConnecting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {isConnecting ? "Connecting..." : "Connect"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
         
         {isConnected && (
-          <div className="mt-6 space-y-4">
-            <div className="flex items-center space-x-2">
-              <Switch 
-                id="use-canvas" 
-                checked={useCanvas}
-                onCheckedChange={handleToggleCanvas}
-              />
-              <Label htmlFor="use-canvas">Use Canvas data instead of internal data</Label>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              When enabled, the dashboard will display data from Canvas LMS instead of the internal database.
-            </p>
-            
-            <div className="pt-4 border-t mt-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="text-sm font-medium">Data Synchronization</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Manually sync data from Canvas LMS
-                    {lastSynced && <span> (Last synced: {lastSynced})</span>}
-                  </p>
-                </div>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={handleSyncData}
-                  disabled={isSyncing || !isConnected}
-                >
-                  {isSyncing ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Syncing...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                      Sync Now
-                    </>
+          <div className="border-t pt-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-medium">Synchronize Data</h4>
+                <p className="text-sm text-muted-foreground">
+                  Pull the latest data from Canvas
+                  {lastSynced && (
+                    <span> • Last synced: {lastSynced}</span>
                   )}
-                </Button>
+                </p>
               </div>
+              <Button 
+                onClick={handleSyncData} 
+                disabled={isSyncing || !useCanvas}
+                size="sm"
+              >
+                {isSyncing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isSyncing ? "Syncing..." : "Sync Now"}
+              </Button>
             </div>
           </div>
+        )}
+
+        {error && (
+          <Alert variant="destructive" className="mt-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
       </CardContent>
     </Card>

@@ -796,8 +796,35 @@ export async function fetchCalendarEvents() {
     },
     cache: 'no-store'
   });
-  if (!res.ok) throw new Error("Failed to fetch calendar events");
+  
   return res.json();
+}
+
+export async function getCanvasStatus() {
+  const baseUrl = getBaseUrl();
+  try {
+    const response = await fetch(`${baseUrl}/api/canvas/config`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store'
+    });
+
+    if (!response.ok) {
+      return { isActive: false };
+    }
+
+    const config = await response.json();
+    return { 
+      isActive: Boolean(config?.isActive),
+      isConnected: Boolean(config?.id)
+    };
+  } catch (error) {
+    console.error('Error checking Canvas status:', error);
+    return { isActive: false };
+  }
 }
 
 export async function getCurrentUser() {
