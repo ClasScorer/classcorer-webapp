@@ -14,6 +14,8 @@ const nextConfig: NextConfig = {
   swcMinify: true,
   poweredByHeader: false,
   reactStrictMode: false,
+  // Enable standalone output for Docker deployment
+  output: 'standalone',
 };
 
 export default nextConfig;
