@@ -178,6 +178,11 @@ interface EnhancedFaceDetectionResponse extends FaceDetectionResponse {
 export function LectureRoom({ course, students }: LectureRoomProps) {
   const router = useRouter();
   
+  // Add debugging log for student data
+  useEffect(() => {
+    console.log(`LectureRoom received ${students?.length || 0} students for course ${course?.id}`);
+  }, [course, students]);
+  
   // State for video/audio controls
   const [isVideoOn, setIsVideoOn] = useState(false)
   const [isAudioOn, setIsAudioOn] = useState(false)
@@ -899,7 +904,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
         student: {
           id: 'professor',
           name: 'Professor',
-          email: course.instructor.email || '',
+          email: typeof course.instructor === 'object' ? course.instructor.email || '' : course.instructor,
           avatar: '/avatars/professor.jpg',
           status: 'Excellent',
           courseId: course.id,
@@ -926,35 +931,63 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       return;
     }
     
+    // Check if students array exists and has values
+    const hasStudents = students && students.length > 0;
+    
     // Create mock detection data
     const mockData: EnhancedFaceDetectionResponse = {
       lecture_id: lectureId,
       timestamp: new Date().toISOString(),
-      total_faces: Math.min(students.length, 5),
-      faces: students.slice(0, 5).map((student, index) => ({
-        person_id: student.id.toString(),
-        recognition_status: Math.random() > 0.2 ? "known" : "new",
-        attention_status: Math.random() > 0.3 ? "focused" : "unfocused",
-        hand_raising_status: {
-          is_hand_raised: Math.random() > 0.8,
-          confidence: Math.random() * 0.5 + 0.5,
-          hand_position: { x: Math.random() * 0.8, y: Math.random() * 0.8 }
-        },
-        confidence: Math.random() * 0.5 + 0.5,
-        bounding_box: {
-          x: Math.random() * 0.5,
-          y: Math.random() * 0.5,
-          width: Math.random() * 0.2 + 0.1,
-          height: Math.random() * 0.2 + 0.1
-        },
-        name: student.name,
-        attentionMetrics: {
-          focusScore: Math.round(Math.random() * 100),
-          focusDuration: Math.round(Math.random() * 60),
-          distractionCount: Math.round(Math.random() * 5),
-          engagementLevel: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low'
-        }
-      })),
+      total_faces: hasStudents ? Math.min(students.length, 5) : 3, // Use 3 as default if no students
+      faces: hasStudents 
+        ? students.slice(0, 5).map((student, index) => ({
+            person_id: student.id.toString(),
+            recognition_status: Math.random() > 0.2 ? "known" : "new",
+            attention_status: Math.random() > 0.3 ? "focused" : "unfocused",
+            hand_raising_status: {
+              is_hand_raised: Math.random() > 0.8,
+              confidence: Math.random() * 0.5 + 0.5,
+              hand_position: { x: Math.random() * 0.8, y: Math.random() * 0.8 }
+            },
+            confidence: Math.random() * 0.5 + 0.5,
+            bounding_box: {
+              x: Math.random() * 0.5,
+              y: Math.random() * 0.5,
+              width: Math.random() * 0.2 + 0.1,
+              height: Math.random() * 0.2 + 0.1
+            },
+            name: student.name,
+            attentionMetrics: {
+              focusScore: Math.round(Math.random() * 100),
+              focusDuration: Math.round(Math.random() * 60),
+              distractionCount: Math.round(Math.random() * 5),
+              engagementLevel: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low'
+            }
+          }))
+        : Array(3).fill(0).map((_, index) => ({
+            person_id: `mock-${index}`,
+            recognition_status: "new",
+            attention_status: Math.random() > 0.3 ? "focused" : "unfocused",
+            hand_raising_status: {
+              is_hand_raised: Math.random() > 0.8,
+              confidence: Math.random() * 0.5 + 0.5,
+              hand_position: { x: Math.random() * 0.8, y: Math.random() * 0.8 }
+            },
+            confidence: Math.random() * 0.5 + 0.5,
+            bounding_box: {
+              x: Math.random() * 0.5,
+              y: Math.random() * 0.5,
+              width: Math.random() * 0.2 + 0.1,
+              height: Math.random() * 0.2 + 0.1
+            },
+            name: `Mock Student ${index + 1}`,
+            attentionMetrics: {
+              focusScore: Math.round(Math.random() * 100),
+              focusDuration: Math.round(Math.random() * 60),
+              distractionCount: Math.round(Math.random() * 5),
+              engagementLevel: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low'
+            }
+          })),
       summary: {
         new_faces: Math.floor(Math.random() * 2),
         known_faces: Math.floor(Math.random() * 4) + 1,
@@ -1010,15 +1043,25 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       ) {
         // Find student info
         if (face.recognition_status === "known") {
-          const student = students.find(s => s.id === face.person_id);
-          if (student) {
-            toast.info(`${student.name} - ${face.attention_status}`, {
-              description: face.hand_raising_status.is_hand_raised ? 
-                "Hand is raised" : 
-                `Focus score: ${(face as EnhancedFaceData).attentionMetrics?.focusScore || 0}%`
-            });
-            return;
+          // Check if students array exists and is not empty
+          if (students && students.length > 0) {
+            const student = students.find(s => s.id === face.person_id);
+            if (student) {
+              toast.info(`${student.name} - ${face.attention_status}`, {
+                description: face.hand_raising_status.is_hand_raised ? 
+                  "Hand is raised" : 
+                  `Focus score: ${(face as EnhancedFaceData).attentionMetrics?.focusScore || 0}%`
+              });
+              return;
+            }
           }
+          // If student not found or no students array
+          toast.info(`Student ID: ${face.person_id}`, {
+            description: face.hand_raising_status.is_hand_raised ? 
+              "Hand is raised" : 
+              `Focus score: ${(face as EnhancedFaceData).attentionMetrics?.focusScore || 0}%`
+          });
+          return;
         } else {
           toast.info("Unrecognized Student", {
             description: "This student hasn't been identified yet"
@@ -1340,20 +1383,27 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                       </div>
                       <div className="divide-y max-h-60 overflow-y-auto p-0">
                         {faceData.faces.filter(face => face.recognition_status === "known").map((face) => {
-                          const student = students.find(s => s.id === face.person_id);
-                          if (!student) return null;
+                          // Find the student, accounting for possible empty students array
+                          const student = students && students.length > 0
+                            ? students.find(s => s.id === face.person_id)
+                            : null;
+                          
+                          // If student is not found, create a placeholder with info from face data
+                          const displayName = student ? student.name : (face as EnhancedFaceData).name || `Unknown (ID: ${face.person_id})`;
+                          const displayEmail = student ? student.email : "No email available";
+                          const displayAvatar = student?.avatar || "";
                           
                           return (
                             <div key={face.person_id} className="p-3 hover:bg-gray-50 transition-colors">
                               <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-3">
                                   <Avatar>
-                                    <AvatarImage src={student.avatar || ""} alt={student.name} />
-                                    <AvatarFallback>{student.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                                    <AvatarImage src={displayAvatar} alt={displayName} />
+                                    <AvatarFallback>{displayName.substring(0, 2).toUpperCase()}</AvatarFallback>
                                   </Avatar>
                                   <div>
-                                    <p className="font-medium">{student.name}</p>
-                                    <p className="text-xs text-gray-500">{student.email}</p>
+                                    <p className="font-medium">{displayName}</p>
+                                    <p className="text-xs text-gray-500">{displayEmail}</p>
                                   </div>
                                 </div>
                                 <div className="flex gap-2">

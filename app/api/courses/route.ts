@@ -63,13 +63,29 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
     })
 
-    // Transform the response to include students directly
-    const transformedCourses = courses.map(course => ({
-      ...course,
-      students: course.students.map(enrollment => enrollment.student)
-    }))
+    console.log(`Found ${courses.length} courses for instructor ${session.user.id}`);
 
-    return NextResponse.json(transformedCourses)
+    // Transform the response to include students directly
+    const transformedCourses = courses.map(course => {
+      // Add logging for each course's students
+      console.log(`Course ${course.name} (${course.id}) has ${course.students.length} enrollments`);
+      
+      const transformedCourse = {
+        ...course,
+        students: course.students.map(enrollment => enrollment.student)
+      };
+      
+      console.log(`Transformed course ${transformedCourse.name} now has ${transformedCourse.students.length} direct students`);
+      
+      return transformedCourse;
+    });
+
+    return NextResponse.json(transformedCourses, {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+        'Content-Type': 'application/json'
+      }
+    })
   } catch (error) {
     console.error('[COURSES_GET]', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
