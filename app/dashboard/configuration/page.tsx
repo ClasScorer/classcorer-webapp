@@ -20,6 +20,8 @@ import {
 } from "@/components/ui/tabs"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
+import { CameraView } from "@/components/camera-view";
+import type { Deadzone } from "@/types";
 
 export default function ConfigurationPage() {
   // Scoring Settings
@@ -53,10 +55,19 @@ export default function ConfigurationPage() {
 
 
   // Deadzone Settings
-  // const [deadzones, setDeadzones] = useState([
-  //   { start: "12:00", end: "13:00", enabled: true },
-  //   { start: "18:00", end: "09:00", enabled: true },
-  // ])
+  const [isEditing, setIsEditing] = useState(false);
+  const [deadzone, setDeadzone] = useState<Deadzone | undefined>();
+
+  const handleSaveDeadzone = (newDeadzone: Omit<Deadzone, "id" | "professorId" | "createdAt" | "updatedAt">) => {
+    setDeadzone({
+      id: "1",
+      professorId: "prof-1",
+      ...newDeadzone,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    setIsEditing(false);
+  };
 
   return (
     <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
@@ -355,6 +366,7 @@ export default function ConfigurationPage() {
           </Card>
         </TabsContent>
 
+        {/* Deadzones Tab */}
         <TabsContent value="deadzones" className="space-y-6">
           <Card>
             <CardHeader>
@@ -364,10 +376,21 @@ export default function ConfigurationPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <p className="text-muted-foreground text-center py-8">
-                Deadzone configuration is currently under development
-              </p>
-                
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Deadzone Editor</h3>
+                <Button
+                  onClick={() => setIsEditing(!isEditing)}
+                  variant={isEditing ? "destructive" : "default"}
+                >
+                  {isEditing ? "Cancel Editing" : "Edit Deadzone"}
+                </Button>
+              </div>
+
+              <CameraView
+                isEditing={isEditing}
+                onSave={handleSaveDeadzone}
+                currentDeadzone={deadzone}
+              />
             </CardContent>
           </Card>
         </TabsContent>
