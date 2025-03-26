@@ -5,6 +5,7 @@ import { Settings, Target, Users, Clock, AlertTriangle, Zap } from "lucide-react
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Card,
   CardContent,
@@ -60,6 +61,44 @@ interface AdvancedConfig {
   automaticRiskDetection: boolean
   realTimeAnalytics: boolean
   engagementNotifications: boolean
+}
+
+// Add LoadingCard component
+function LoadingCard() {
+  return (
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-6 w-[250px]" />
+        <Skeleton className="h-4 w-[350px] mt-2" />
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i}>
+              <div className="flex justify-between mb-2">
+                <Skeleton className="h-4 w-[200px]" />
+                <Skeleton className="h-4 w-[50px]" />
+              </div>
+              <Skeleton className="h-5 w-full mt-1" />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// Add LoadingSwitchItem component
+function LoadingSwitchItem() {
+  return (
+    <div className="flex items-center justify-between">
+      <div>
+        <Skeleton className="h-4 w-[150px]" />
+        <Skeleton className="h-3 w-[250px] mt-1" />
+      </div>
+      <Skeleton className="h-6 w-11" />
+    </div>
+  )
 }
 
 export default function ConfigurationPage() {
@@ -282,9 +321,19 @@ export default function ConfigurationPage() {
   if (isLoading) {
     return (
       <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
-        <div className="flex items-center space-x-4">
-          <div className="h-12 w-12 animate-spin rounded-full border-t-2 border-primary"></div>
-          <h2 className="text-3xl font-bold tracking-tight">Loading Configuration...</h2>
+        <div>
+          <Skeleton className="h-8 w-[300px]" />
+          <Skeleton className="h-4 w-[400px] mt-2" />
+        </div>
+
+        <div className="space-y-6">
+          <div className="flex gap-2">
+            {["Scoring", "Decay", "Thresholds", "Deadzones", "Bonuses", "Advanced"].map((tab) => (
+              <Skeleton key={tab} className="h-9 w-[100px]" />
+            ))}
+          </div>
+
+          <LoadingCard />
         </div>
       </div>
     )
@@ -328,423 +377,449 @@ export default function ConfigurationPage() {
         </TabsList>
 
         <TabsContent value="scoring" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Scoring Rules</CardTitle>
-              <CardDescription>
-                Configure how points are awarded for different activities
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <Label>Score for Participation (Hand Raising)</Label>
-                    <span className="text-muted-foreground">{scoringConfig.participationScore} points</span>
-                  </div>
-                  <Slider
-                    value={[scoringConfig.participationScore]}
-                    onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, participationScore: value }))}
-                    min={1}
-                    max={10}
-                    step={1}
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <Label>Score for Engagement (per minute)</Label>
-                    <span className="text-muted-foreground">{scoringConfig.engagementScore} points</span>
-                  </div>
-                  <Slider
-                    value={[scoringConfig.engagementScore]}
-                    onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, engagementScore: value }))}
-                    min={1}
-                    max={10}
-                    step={1}
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <Label>Score for Attendance</Label>
-                    <span className="text-muted-foreground">{scoringConfig.attendanceScore} points</span>
-                  </div>
-                  <Slider
-                    value={[scoringConfig.attendanceScore]}
-                    onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, attendanceScore: value }))}
-                    min={1}
-                    max={10}
-                    step={1}
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <Label>Score for Answering a question (You will be prompted to give points)</Label>
-                    <span className="text-muted-foreground">{scoringConfig.answerScore} points</span>
-                  </div>
-                  <Slider
-                    value={[scoringConfig.answerScore]}
-                    onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, answerScore: value }))}
-                    min={1}
-                    max={20}
-                    step={1}
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <Label>Score Penalty for Talking in class</Label>
-                    <span className="text-muted-foreground">{scoringConfig.talkingBadScore} points</span>
-                  </div>
-                  <Slider
-                    value={[scoringConfig.talkingBadScore]}
-                    onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, talkingBadScore: value }))}
-                    min={-20}
-                    max={0}
-                    step={1}
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <Label>Score Penalty for Absence</Label>
-                    <span className="text-muted-foreground">{scoringConfig.attendanceBadScore} points</span>
-                  </div>
-                  <Slider
-                    value={[scoringConfig.attendanceBadScore]}
-                    onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, attendanceBadScore: value }))}
-                    min={-20}
-                    max={0}
-                    step={1}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="decay" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Decay Configuration</CardTitle>
-              <CardDescription>
-                Configure how scores decay over time
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <Label>Decay Rate</Label>
-                    <span className="text-muted-foreground">{decayConfig.decayRate}</span>
-                  </div>
-                  <Slider
-                    value={[decayConfig.decayRate]}
-                    onValueChange={([value]) => setDecayConfig(prev => ({ ...prev, decayRate: value }))}
-                    min={0}
-                    max={1}
-                    step={0.1}
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <Label>Decay Interval (days)</Label>
-                    <span className="text-muted-foreground">{decayConfig.decayInterval} days</span>
-                  </div>
-                  <Slider
-                    value={[decayConfig.decayInterval]}
-                    onValueChange={([value]) => setDecayConfig(prev => ({ ...prev, decayInterval: value }))}
-                    min={1}
-                    max={7}
-                    step={1}
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <Label>Decay Threshold</Label>
-                    <span className="text-muted-foreground">{decayConfig.decayThreshold}</span>
-                  </div>
-                  <Slider
-                    value={[decayConfig.decayThreshold]}
-                    onValueChange={([value]) => setDecayConfig(prev => ({ ...prev, decayThreshold: value }))}
-                    min={0}
-                    max={1}
-                    step={0.1}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="thresholds" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Performance Thresholds</CardTitle>
-              <CardDescription>
-                Set minimum requirements for attendance and engagement
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <Label>Attendance Threshold</Label>
-                    <span className="text-muted-foreground">{thresholdConfig.attendanceThreshold}%</span>
-                  </div>
-                  <Slider
-                    value={[thresholdConfig.attendanceThreshold]}
-                    onValueChange={([value]) => setThresholdConfig(prev => ({ ...prev, attendanceThreshold: value }))}
-                    min={30}
-                    max={90}
-                    step={5}
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <Label>Engagement Threshold</Label>
-                    <span className="text-muted-foreground">{thresholdConfig.engagementThreshold}%</span>
-                  </div>
-                  <Slider
-                    value={[thresholdConfig.engagementThreshold]}
-                    onValueChange={([value]) => setThresholdConfig(prev => ({ ...prev, engagementThreshold: value }))}
-                    min={30}
-                    max={90}
-                    step={5}
-                    className="w-full"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <Label>Students at Risk Threshold</Label>
-                    <span className="text-muted-foreground">{thresholdConfig.atRiskThreshold}%</span>
-                  </div>
-                  <Slider
-                    value={[thresholdConfig.atRiskThreshold]}
-                    onValueChange={([value]) => setThresholdConfig(prev => ({ ...prev, atRiskThreshold: value }))}
-                    min={40}
-                    max={80}
-                    step={5}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="deadzones" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Deadzone Configuration</CardTitle>
-              <CardDescription>
-                Configure where tracking should be paused
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold">Deadzone Editor</h3>
-                <div className="flex gap-2">
-                  {deadzone && (
-                    <Button
-                      onClick={() => handleDeleteDeadzone(deadzone.id)}
-                      variant="destructive"
-                      disabled={isSaving || isEditing}
-                    >
-                      {isSaving ? (
-                        <>
-                          <span className="animate-spin mr-2">⟳</span>
-                          Deleting...
-                        </>
-                      ) : (
-                        "Delete Deadzone"
-                      )}
-                    </Button>
-                  )}
-                  <Button
-                    onClick={() => setIsEditing(!isEditing)}
-                    variant={isEditing ? "destructive" : "default"}
-                    disabled={isSaving}
-                  >
-                    {isEditing ? "Cancel Editing" : "Edit Deadzone"}
-                  </Button>
-                </div>
-              </div>
-
-              {isSaving ? (
-                <div className="flex items-center justify-center p-8">
-                  <div className="flex items-center space-x-4">
-                    <div className="h-8 w-8 animate-spin rounded-full border-t-2 border-primary"></div>
-                    <p>Saving changes...</p>
-                  </div>
-                </div>
-              ) : (
-                <CameraView
-                  isEditing={isEditing}
-                  onSave={handleSaveDeadzone}
-                  currentDeadzone={deadzone}
-                />
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="bonuses" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Bonus Configuration</CardTitle>
-              <CardDescription>
-                Configure bonuses for consistent performance
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Three-Day Streak Bonus</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Enable bonus for three consecutive days of participation
-                    </p>
-                  </div>
-                  <Switch 
-                    checked={bonusConfig.enableThreeStreak} 
-                    onCheckedChange={(checked) => setBonusConfig(prev => ({ ...prev, enableThreeStreak: checked }))} 
-                  />
-                </div>
-
-                {bonusConfig.enableThreeStreak && (
+          {isSaving ? <LoadingCard /> : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Scoring Rules</CardTitle>
+                <CardDescription>
+                  Configure how points are awarded for different activities
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
                   <div>
                     <div className="flex justify-between mb-2">
-                      <Label>Three-Day Streak Bonus Amount</Label>
-                      <span className="text-muted-foreground">{bonusConfig.threeStreakBonus} points</span>
+                      <Label>Score for Participation (Hand Raising)</Label>
+                      <span className="text-muted-foreground">{scoringConfig.participationScore} points</span>
                     </div>
                     <Slider
-                      value={[bonusConfig.threeStreakBonus]}
-                      onValueChange={([value]) => setBonusConfig(prev => ({ ...prev, threeStreakBonus: value }))}
-                      min={5}
+                      value={[scoringConfig.participationScore]}
+                      onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, participationScore: value }))}
+                      min={1}
+                      max={10}
+                      step={1}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <Label>Score for Engagement (per minute)</Label>
+                      <span className="text-muted-foreground">{scoringConfig.engagementScore} points</span>
+                    </div>
+                    <Slider
+                      value={[scoringConfig.engagementScore]}
+                      onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, engagementScore: value }))}
+                      min={1}
+                      max={10}
+                      step={1}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <Label>Score for Attendance</Label>
+                      <span className="text-muted-foreground">{scoringConfig.attendanceScore} points</span>
+                    </div>
+                    <Slider
+                      value={[scoringConfig.attendanceScore]}
+                      onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, attendanceScore: value }))}
+                      min={1}
+                      max={10}
+                      step={1}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <Label>Score for Answering a question (You will be prompted to give points)</Label>
+                      <span className="text-muted-foreground">{scoringConfig.answerScore} points</span>
+                    </div>
+                    <Slider
+                      value={[scoringConfig.answerScore]}
+                      onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, answerScore: value }))}
+                      min={1}
                       max={20}
                       step={1}
                       className="w-full"
                     />
                   </div>
-                )}
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Five-Day Streak Bonus</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Enable bonus for five consecutive days of participation
-                    </p>
-                  </div>
-                  <Switch 
-                    checked={bonusConfig.enableFiveStreak} 
-                    onCheckedChange={(checked) => setBonusConfig(prev => ({ ...prev, enableFiveStreak: checked }))} 
-                  />
-                </div>
-
-                {bonusConfig.enableFiveStreak && (
                   <div>
                     <div className="flex justify-between mb-2">
-                      <Label>Five-Day Streak Bonus Amount</Label>
-                      <span className="text-muted-foreground">{bonusConfig.fiveStreakBonus} points</span>
+                      <Label>Score Penalty for Talking in class</Label>
+                      <span className="text-muted-foreground">{scoringConfig.talkingBadScore} points</span>
                     </div>
                     <Slider
-                      value={[bonusConfig.fiveStreakBonus]}
-                      onValueChange={([value]) => setBonusConfig(prev => ({ ...prev, fiveStreakBonus: value }))}
-                      min={10}
+                      value={[scoringConfig.talkingBadScore]}
+                      onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, talkingBadScore: value }))}
+                      min={-20}
+                      max={0}
+                      step={1}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <Label>Score Penalty for Absence</Label>
+                      <span className="text-muted-foreground">{scoringConfig.attendanceBadScore} points</span>
+                    </div>
+                    <Slider
+                      value={[scoringConfig.attendanceBadScore]}
+                      onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, attendanceBadScore: value }))}
+                      min={-20}
+                      max={0}
+                      step={1}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="decay" className="space-y-6">
+          {isSaving ? <LoadingCard /> : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Decay Configuration</CardTitle>
+                <CardDescription>
+                  Configure how scores decay over time
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <Label>Decay Rate</Label>
+                      <span className="text-muted-foreground">{decayConfig.decayRate}</span>
+                    </div>
+                    <Slider
+                      value={[decayConfig.decayRate]}
+                      onValueChange={([value]) => setDecayConfig(prev => ({ ...prev, decayRate: value }))}
+                      min={0}
+                      max={1}
+                      step={0.1}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <Label>Decay Interval (days)</Label>
+                      <span className="text-muted-foreground">{decayConfig.decayInterval} days</span>
+                    </div>
+                    <Slider
+                      value={[decayConfig.decayInterval]}
+                      onValueChange={([value]) => setDecayConfig(prev => ({ ...prev, decayInterval: value }))}
+                      min={1}
+                      max={7}
+                      step={1}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <Label>Decay Threshold</Label>
+                      <span className="text-muted-foreground">{decayConfig.decayThreshold}</span>
+                    </div>
+                    <Slider
+                      value={[decayConfig.decayThreshold]}
+                      onValueChange={([value]) => setDecayConfig(prev => ({ ...prev, decayThreshold: value }))}
+                      min={0}
+                      max={1}
+                      step={0.1}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="thresholds" className="space-y-6">
+          {isSaving ? <LoadingCard /> : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Performance Thresholds</CardTitle>
+                <CardDescription>
+                  Set minimum requirements for attendance and engagement
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <Label>Attendance Threshold</Label>
+                      <span className="text-muted-foreground">{thresholdConfig.attendanceThreshold}%</span>
+                    </div>
+                    <Slider
+                      value={[thresholdConfig.attendanceThreshold]}
+                      onValueChange={([value]) => setThresholdConfig(prev => ({ ...prev, attendanceThreshold: value }))}
+                      min={30}
+                      max={90}
+                      step={5}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <Label>Engagement Threshold</Label>
+                      <span className="text-muted-foreground">{thresholdConfig.engagementThreshold}%</span>
+                    </div>
+                    <Slider
+                      value={[thresholdConfig.engagementThreshold]}
+                      onValueChange={([value]) => setThresholdConfig(prev => ({ ...prev, engagementThreshold: value }))}
+                      min={30}
+                      max={90}
+                      step={5}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <Label>Students at Risk Threshold</Label>
+                      <span className="text-muted-foreground">{thresholdConfig.atRiskThreshold}%</span>
+                    </div>
+                    <Slider
+                      value={[thresholdConfig.atRiskThreshold]}
+                      onValueChange={([value]) => setThresholdConfig(prev => ({ ...prev, atRiskThreshold: value }))}
+                      min={40}
+                      max={80}
+                      step={5}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="deadzones" className="space-y-6">
+          {isSaving ? <LoadingCard /> : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Deadzone Configuration</CardTitle>
+                <CardDescription>
+                  Configure where tracking should be paused
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold">Deadzone Editor</h3>
+                  <div className="flex gap-2">
+                    {deadzone && (
+                      <Button
+                        onClick={() => handleDeleteDeadzone(deadzone.id)}
+                        variant="destructive"
+                        disabled={isSaving || isEditing}
+                      >
+                        {isSaving ? (
+                          <>
+                            <span className="animate-spin mr-2">⟳</span>
+                            Deleting...
+                          </>
+                        ) : (
+                          "Delete Deadzone"
+                        )}
+                      </Button>
+                    )}
+                    <Button
+                      onClick={() => setIsEditing(!isEditing)}
+                      variant={isEditing ? "destructive" : "default"}
+                      disabled={isSaving}
+                    >
+                      {isEditing ? "Cancel Editing" : "Edit Deadzone"}
+                    </Button>
+                  </div>
+                </div>
+
+                {isSaving ? (
+                  <div className="flex items-center justify-center p-8">
+                    <div className="flex items-center space-x-4">
+                      <div className="h-8 w-8 animate-spin rounded-full border-t-2 border-primary"></div>
+                      <p>Saving changes...</p>
+                    </div>
+                  </div>
+                ) : (
+                  <CameraView
+                    isEditing={isEditing}
+                    onSave={handleSaveDeadzone}
+                    currentDeadzone={deadzone}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="bonuses" className="space-y-6">
+          {isSaving ? <LoadingCard /> : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Bonus Configuration</CardTitle>
+                <CardDescription>
+                  Configure bonuses for consistent performance
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label>Three-Day Streak Bonus</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Enable bonus for three consecutive days of participation
+                      </p>
+                    </div>
+                    <Switch 
+                      checked={bonusConfig.enableThreeStreak} 
+                      onCheckedChange={(checked) => setBonusConfig(prev => ({ ...prev, enableThreeStreak: checked }))} 
+                    />
+                  </div>
+
+                  {bonusConfig.enableThreeStreak && (
+                    <div>
+                      <div className="flex justify-between mb-2">
+                        <Label>Three-Day Streak Bonus Amount</Label>
+                        <span className="text-muted-foreground">{bonusConfig.threeStreakBonus} points</span>
+                      </div>
+                      <Slider
+                        value={[bonusConfig.threeStreakBonus]}
+                        onValueChange={([value]) => setBonusConfig(prev => ({ ...prev, threeStreakBonus: value }))}
+                        min={5}
+                        max={20}
+                        step={1}
+                        className="w-full"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label>Five-Day Streak Bonus</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Enable bonus for five consecutive days of participation
+                      </p>
+                    </div>
+                    <Switch 
+                      checked={bonusConfig.enableFiveStreak} 
+                      onCheckedChange={(checked) => setBonusConfig(prev => ({ ...prev, enableFiveStreak: checked }))} 
+                    />
+                  </div>
+
+                  {bonusConfig.enableFiveStreak && (
+                    <div>
+                      <div className="flex justify-between mb-2">
+                        <Label>Five-Day Streak Bonus Amount</Label>
+                        <span className="text-muted-foreground">{bonusConfig.fiveStreakBonus} points</span>
+                      </div>
+                      <Slider
+                        value={[bonusConfig.fiveStreakBonus]}
+                        onValueChange={([value]) => setBonusConfig(prev => ({ ...prev, fiveStreakBonus: value }))}
+                        min={10}
+                        max={30}
+                        step={1}
+                        className="w-full"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <Label>Constant Engagement Bonus</Label>
+                      <span className="text-muted-foreground">{bonusConfig.constantEngagementBonus} points</span>
+                    </div>
+                    <Slider
+                      value={[bonusConfig.constantEngagementBonus]}
+                      onValueChange={([value]) => setBonusConfig(prev => ({ ...prev, constantEngagementBonus: value }))}
+                      min={5}
                       max={30}
                       step={1}
                       className="w-full"
                     />
                   </div>
-                )}
-
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <Label>Constant Engagement Bonus</Label>
-                    <span className="text-muted-foreground">{bonusConfig.constantEngagementBonus} points</span>
-                  </div>
-                  <Slider
-                    value={[bonusConfig.constantEngagementBonus]}
-                    onValueChange={([value]) => setBonusConfig(prev => ({ ...prev, constantEngagementBonus: value }))}
-                    min={5}
-                    max={30}
-                    step={1}
-                    className="w-full"
-                  />
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="advanced" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Advanced Settings</CardTitle>
-              <CardDescription>
-                Additional configuration options for advanced users
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Automatic Risk Detection</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Automatically detect and flag students at risk
-                    </p>
-                  </div>
-                  <Switch 
-                    checked={advancedConfig.automaticRiskDetection}
-                    onCheckedChange={(checked) => setAdvancedConfig(prev => ({ ...prev, automaticRiskDetection: checked }))}
-                  />
+          {isSaving ? (
+            <Card>
+              <CardHeader>
+                <Skeleton className="h-6 w-[200px]" />
+                <Skeleton className="h-4 w-[300px] mt-2" />
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <LoadingSwitchItem key={i} />
+                  ))}
                 </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Advanced Settings</CardTitle>
+                <CardDescription>
+                  Additional configuration options for advanced users
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label>Automatic Risk Detection</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Automatically detect and flag students at risk
+                      </p>
+                    </div>
+                    <Switch 
+                      checked={advancedConfig.automaticRiskDetection}
+                      onCheckedChange={(checked) => setAdvancedConfig(prev => ({ ...prev, automaticRiskDetection: checked }))}
+                    />
+                  </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Real-time Analytics</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Enable real-time performance analytics
-                    </p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label>Real-time Analytics</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Enable real-time performance analytics
+                      </p>
+                    </div>
+                    <Switch 
+                      checked={advancedConfig.realTimeAnalytics}
+                      onCheckedChange={(checked) => setAdvancedConfig(prev => ({ ...prev, realTimeAnalytics: checked }))}
+                    />
                   </div>
-                  <Switch 
-                    checked={advancedConfig.realTimeAnalytics}
-                    onCheckedChange={(checked) => setAdvancedConfig(prev => ({ ...prev, realTimeAnalytics: checked }))}
-                  />
-                </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>Engagement Notifications</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Send notifications for low engagement
-                    </p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label>Engagement Notifications</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Send notifications for low engagement
+                      </p>
+                    </div>
+                    <Switch 
+                      checked={advancedConfig.engagementNotifications}
+                      onCheckedChange={(checked) => setAdvancedConfig(prev => ({ ...prev, engagementNotifications: checked }))}
+                    />
                   </div>
-                  <Switch 
-                    checked={advancedConfig.engagementNotifications}
-                    onCheckedChange={(checked) => setAdvancedConfig(prev => ({ ...prev, engagementNotifications: checked }))}
-                  />
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
 
