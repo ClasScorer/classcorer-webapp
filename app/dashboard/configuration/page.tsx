@@ -560,19 +560,47 @@ export default function ConfigurationPage() {
             <CardContent className="space-y-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-semibold">Deadzone Editor</h3>
-                <Button
-                  onClick={() => setIsEditing(!isEditing)}
-                  variant={isEditing ? "destructive" : "default"}
-                >
-                  {isEditing ? "Cancel Editing" : "Edit Deadzone"}
-                </Button>
+                <div className="flex gap-2">
+                  {deadzone && (
+                    <Button
+                      onClick={() => handleDeleteDeadzone(deadzone.id)}
+                      variant="destructive"
+                      disabled={isSaving || isEditing}
+                    >
+                      {isSaving ? (
+                        <>
+                          <span className="animate-spin mr-2">⟳</span>
+                          Deleting...
+                        </>
+                      ) : (
+                        "Delete Deadzone"
+                      )}
+                    </Button>
+                  )}
+                  <Button
+                    onClick={() => setIsEditing(!isEditing)}
+                    variant={isEditing ? "destructive" : "default"}
+                    disabled={isSaving}
+                  >
+                    {isEditing ? "Cancel Editing" : "Edit Deadzone"}
+                  </Button>
+                </div>
               </div>
 
-              <CameraView
-                isEditing={isEditing}
-                onSave={handleSaveDeadzone}
-                currentDeadzone={deadzone}
-              />
+              {isSaving ? (
+                <div className="flex items-center justify-center p-8">
+                  <div className="flex items-center space-x-4">
+                    <div className="h-8 w-8 animate-spin rounded-full border-t-2 border-primary"></div>
+                    <p>Saving changes...</p>
+                  </div>
+                </div>
+              ) : (
+                <CameraView
+                  isEditing={isEditing}
+                  onSave={handleSaveDeadzone}
+                  currentDeadzone={deadzone}
+                />
+              )}
             </CardContent>
           </Card>
         </TabsContent>
