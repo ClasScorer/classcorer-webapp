@@ -63,6 +63,11 @@ interface AdvancedConfig {
 }
 
 export default function ConfigurationPage() {
+  // Loading States
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isResetting, setIsResetting] = useState(false)
+
   // Scoring Settings
   const [scoringConfig, setScoringConfig] = useState<ScoringConfig>({
     participationScore: 5,
@@ -114,6 +119,7 @@ export default function ConfigurationPage() {
   useEffect(() => {
     const fetchConfigs = async () => {
       try {
+        setIsLoading(true)
         const [scoring, threshold, decay, bonus, advanced, deadzones] = await Promise.all([
           fetch('/api/config/scoring').then(res => res.json()),
           fetch('/api/config/threshold').then(res => res.json()),
@@ -128,9 +134,14 @@ export default function ConfigurationPage() {
         if (decay) setDecayConfig(decay)
         if (bonus) setBonusConfig(bonus)
         if (advanced) setAdvancedConfig(advanced)
-        if (deadzones?.length > 0) setDeadzone(deadzones[0]) // Assuming we're working with the first deadzone for now
+        if (deadzones?.length > 0) setDeadzone(deadzones[0])
+        
+        toast.success("Configuration loaded successfully")
       } catch (error) {
         toast.error("Failed to load configurations")
+        console.error("[CONFIG_LOAD]", error)
+      } finally {
+        setIsLoading(false)
       }
     }
 
@@ -139,6 +150,7 @@ export default function ConfigurationPage() {
 
   const handleSaveDeadzone = async (newDeadzone: Omit<Deadzone, "id" | "userId" | "createdAt" | "updatedAt">) => {
     try {
+      setIsSaving(true)
       const response = await fetch('/api/config/deadzones', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -153,11 +165,15 @@ export default function ConfigurationPage() {
       toast.success("Deadzone saved successfully")
     } catch (error) {
       toast.error("Failed to save deadzone")
+      console.error("[DEADZONE_SAVE]", error)
+    } finally {
+      setIsSaving(false)
     }
   }
 
   const handleSaveConfigs = async () => {
     try {
+      setIsSaving(true)
       const results = await Promise.all([
         fetch('/api/config/scoring', {
           method: 'PUT',
@@ -192,47 +208,60 @@ export default function ConfigurationPage() {
       toast.success("All configurations saved successfully")
     } catch (error) {
       toast.error("Failed to save configurations")
+      console.error("[CONFIG_SAVE]", error)
+    } finally {
+      setIsSaving(false)
     }
   }
 
   const handleResetDefaults = () => {
-    setScoringConfig({
-      participationScore: 5,
-      engagementScore: 5,
-      attendanceScore: 5,
-      answerScore: 15,
-      talkingBadScore: -10,
-      attendanceBadScore: -10,
-      repeatedBadScore: -20,
-    })
-    setThresholdConfig({
-      attendanceThreshold: 70,
-      engagementThreshold: 60,
-      atRiskThreshold: 60,
-      maxScoreThreshold: 100,
-      minScoreThreshold: 0,
-    })
-    setDecayConfig({
-      decayRate: 0.5,
-      decayInterval: 1,
-      decayThreshold: 0.5,
-    })
-    setBonusConfig({
-      enableThreeStreak: true,
-      threeStreakBonus: 10,
-      enableFiveStreak: true,
-      fiveStreakBonus: 20,
-      constantEngagementBonus: 20,
-    })
-    setAdvancedConfig({
-      automaticRiskDetection: true,
-      realTimeAnalytics: true,
-      engagementNotifications: true,
-    })
+    try {
+      setIsResetting(true)
+      setScoringConfig({
+        participationScore: 5,
+        engagementScore: 5,
+        attendanceScore: 5,
+        answerScore: 15,
+        talkingBadScore: -10,
+        attendanceBadScore: -10,
+        repeatedBadScore: -20,
+      })
+      setThresholdConfig({
+        attendanceThreshold: 70,
+        engagementThreshold: 60,
+        atRiskThreshold: 60,
+        maxScoreThreshold: 100,
+        minScoreThreshold: 0,
+      })
+      setDecayConfig({
+        decayRate: 0.5,
+        decayInterval: 1,
+        decayThreshold: 0.5,
+      })
+      setBonusConfig({
+        enableThreeStreak: true,
+        threeStreakBonus: 10,
+        enableFiveStreak: true,
+        fiveStreakBonus: 20,
+        constantEngagementBonus: 20,
+      })
+      setAdvancedConfig({
+        automaticRiskDetection: true,
+        realTimeAnalytics: true,
+        engagementNotifications: true,
+      })
+      toast.success("Settings reset to defaults")
+    } catch (error) {
+      toast.error("Failed to reset settings")
+      console.error("[CONFIG_RESET]", error)
+    } finally {
+      setIsResetting(false)
+    }
   }
 
   const handleDeleteDeadzone = async (id: string) => {
     try {
+      setIsSaving(true)
       const response = await fetch(`/api/config/deadzones?id=${id}`, {
         method: 'DELETE',
       })
@@ -244,7 +273,21 @@ export default function ConfigurationPage() {
       toast.success("Deadzone deleted successfully")
     } catch (error) {
       toast.error("Failed to delete deadzone")
+      console.error("[DEADZONE_DELETE]", error)
+    } finally {
+      setIsSaving(false)
     }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
+        <div className="flex items-center space-x-4">
+          <div className="h-12 w-12 animate-spin rounded-full border-t-2 border-primary"></div>
+          <h2 className="text-3xl font-bold tracking-tight">Loading Configuration...</h2>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -678,8 +721,33 @@ export default function ConfigurationPage() {
       </Tabs>
 
       <div className="flex justify-end gap-4">
-        <Button variant="outline" onClick={handleResetDefaults}>Reset to Defaults</Button>
-        <Button onClick={handleSaveConfigs}>Save Changes</Button>
+        <Button 
+          variant="outline" 
+          onClick={handleResetDefaults}
+          disabled={isResetting || isSaving}
+        >
+          {isResetting ? (
+            <>
+              <span className="animate-spin mr-2">⟳</span>
+              Resetting...
+            </>
+          ) : (
+            "Reset to Defaults"
+          )}
+        </Button>
+        <Button 
+          onClick={handleSaveConfigs}
+          disabled={isResetting || isSaving}
+        >
+          {isSaving ? (
+            <>
+              <span className="animate-spin mr-2">⟳</span>
+              Saving...
+            </>
+          ) : (
+            "Save Changes"
+          )}
+        </Button>
       </div>
     </div>
   )
