@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Settings, Target, Users, Clock, AlertTriangle, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,54 +20,232 @@ import {
 } from "@/components/ui/tabs"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
-import { CameraView } from "@/components/camera-view";
-import type { Deadzone } from "@/types";
+import { CameraView } from "@/components/camera-view"
+import type { Deadzone } from "@/types"
+import { toast } from "sonner"
+// Types for our configurations
+interface ScoringConfig {
+  participationScore: number
+  engagementScore: number
+  attendanceScore: number
+  answerScore: number
+  talkingBadScore: number
+  attendanceBadScore: number
+  repeatedBadScore: number
+}
+
+interface ThresholdConfig {
+  attendanceThreshold: number
+  engagementThreshold: number
+  atRiskThreshold: number
+  maxScoreThreshold: number
+  minScoreThreshold: number
+}
+
+interface DecayConfig {
+  decayRate: number
+  decayInterval: number
+  decayThreshold: number
+}
+
+interface BonusConfig {
+  enableThreeStreak: boolean
+  threeStreakBonus: number
+  enableFiveStreak: boolean
+  fiveStreakBonus: number
+  constantEngagementBonus: number
+}
+
+interface AdvancedConfig {
+  automaticRiskDetection: boolean
+  realTimeAnalytics: boolean
+  engagementNotifications: boolean
+}
 
 export default function ConfigurationPage() {
   // Scoring Settings
-  const [participationScore, setParticipationScore] = useState(5)
-  const [engagementScore, setEngagementScore] = useState(5)
-  const [attendanceScore, setAttendanceScore] = useState(5)
-  const [answerScore, setAnswerScore] = useState(15)
-  const [talkingBadScore, setTalkingBadScore] = useState(-10)
-  const [attendanceBadScore, setAttendanceBadScore] = useState(-10)
-  const [repeatedBadScore, setRepeatedBadScore] = useState(-20)
+  const [scoringConfig, setScoringConfig] = useState<ScoringConfig>({
+    participationScore: 5,
+    engagementScore: 5,
+    attendanceScore: 5,
+    answerScore: 15,
+    talkingBadScore: -10,
+    attendanceBadScore: -10,
+    repeatedBadScore: -20,
+  })
 
-  
   // Threshold Settings
-  const [attendanceThreshold, setAttendanceThreshold] = useState(70)
-  const [engagementThreshold, setEngagementThreshold] = useState(60)
-  const [atRiskThreshold, setAtRiskThreshold] = useState(60)
-  const [maxScoreThreshold, setMaxScoreThreshold] = useState(100)
-  const [minScoreThreshold, setMinScoreThreshold] = useState(0)
-  
+  const [thresholdConfig, setThresholdConfig] = useState<ThresholdConfig>({
+    attendanceThreshold: 70,
+    engagementThreshold: 60,
+    atRiskThreshold: 60,
+    maxScoreThreshold: 100,
+    minScoreThreshold: 0,
+  })
+
   // Decay Settings
-  const [decayRate, setDecayRate] = useState(0.5)
-  const [decayInterval, setDecayInterval] = useState(1)
-  const [decayThreshold, setDecayThreshold] = useState(0.5)
+  const [decayConfig, setDecayConfig] = useState<DecayConfig>({
+    decayRate: 0.5,
+    decayInterval: 1,
+    decayThreshold: 0.5,
+  })
 
-  // Bonuses Settings
-  const [enableThreeStreak, setEnableThreeStreak] = useState(true)
-  const [threeStreakBonus, setThreeStreakBonus] = useState(10)
-  const [enableFiveStreak, setEnableFiveStreak] = useState(true)
-  const [fiveStreakBonus, setFiveStreakBonus] = useState(20)
-  const [constantEngagementBonus, setConstantEngagementBonus] = useState(20)
+  // Bonus Settings
+  const [bonusConfig, setBonusConfig] = useState<BonusConfig>({
+    enableThreeStreak: true,
+    threeStreakBonus: 10,
+    enableFiveStreak: true,
+    fiveStreakBonus: 20,
+    constantEngagementBonus: 20,
+  })
 
+  // Advanced Settings
+  const [advancedConfig, setAdvancedConfig] = useState<AdvancedConfig>({
+    automaticRiskDetection: true,
+    realTimeAnalytics: true,
+    engagementNotifications: true,
+  })
 
   // Deadzone Settings
-  const [isEditing, setIsEditing] = useState(false);
-  const [deadzone, setDeadzone] = useState<Deadzone | undefined>();
+  const [isEditing, setIsEditing] = useState(false)
+  const [deadzone, setDeadzone] = useState<Deadzone | undefined>()
 
-  const handleSaveDeadzone = (newDeadzone: Omit<Deadzone, "id" | "professorId" | "createdAt" | "updatedAt">) => {
-    setDeadzone({
-      id: "1",
-      professorId: "prof-1",
-      ...newDeadzone,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    setIsEditing(false);
-  };
+  // Fetch configurations on component mount
+  useEffect(() => {
+    const fetchConfigs = async () => {
+      try {
+        const [scoring, threshold, decay, bonus, advanced, deadzones] = await Promise.all([
+          fetch('/api/config/scoring').then(res => res.json()),
+          fetch('/api/config/threshold').then(res => res.json()),
+          fetch('/api/config/decay').then(res => res.json()),
+          fetch('/api/config/bonus').then(res => res.json()),
+          fetch('/api/config/advanced').then(res => res.json()),
+          fetch('/api/config/deadzones').then(res => res.json()),
+        ])
+
+        if (scoring) setScoringConfig(scoring)
+        if (threshold) setThresholdConfig(threshold)
+        if (decay) setDecayConfig(decay)
+        if (bonus) setBonusConfig(bonus)
+        if (advanced) setAdvancedConfig(advanced)
+        if (deadzones?.length > 0) setDeadzone(deadzones[0]) // Assuming we're working with the first deadzone for now
+      } catch (error) {
+        toast.error("Failed to load configurations")
+      }
+    }
+
+    fetchConfigs()
+  }, [])
+
+  const handleSaveDeadzone = async (newDeadzone: Omit<Deadzone, "id" | "userId" | "createdAt" | "updatedAt">) => {
+    try {
+      const response = await fetch('/api/config/deadzones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newDeadzone),
+      })
+      
+      if (!response.ok) throw new Error('Failed to save deadzone')
+      
+      const savedDeadzone = await response.json()
+      setDeadzone(savedDeadzone)
+      setIsEditing(false)
+      toast.success("Deadzone saved successfully")
+    } catch (error) {
+      toast.error("Failed to save deadzone")
+    }
+  }
+
+  const handleSaveConfigs = async () => {
+    try {
+      const results = await Promise.all([
+        fetch('/api/config/scoring', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(scoringConfig),
+        }),
+        fetch('/api/config/threshold', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(thresholdConfig),
+        }),
+        fetch('/api/config/decay', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(decayConfig),
+        }),
+        fetch('/api/config/bonus', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bonusConfig),
+        }),
+        fetch('/api/config/advanced', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(advancedConfig),
+        }),
+      ])
+
+      const hasError = results.some(res => !res.ok)
+      if (hasError) throw new Error('Failed to save some configurations')
+
+      toast.success("All configurations saved successfully")
+    } catch (error) {
+      toast.error("Failed to save configurations")
+    }
+  }
+
+  const handleResetDefaults = () => {
+    setScoringConfig({
+      participationScore: 5,
+      engagementScore: 5,
+      attendanceScore: 5,
+      answerScore: 15,
+      talkingBadScore: -10,
+      attendanceBadScore: -10,
+      repeatedBadScore: -20,
+    })
+    setThresholdConfig({
+      attendanceThreshold: 70,
+      engagementThreshold: 60,
+      atRiskThreshold: 60,
+      maxScoreThreshold: 100,
+      minScoreThreshold: 0,
+    })
+    setDecayConfig({
+      decayRate: 0.5,
+      decayInterval: 1,
+      decayThreshold: 0.5,
+    })
+    setBonusConfig({
+      enableThreeStreak: true,
+      threeStreakBonus: 10,
+      enableFiveStreak: true,
+      fiveStreakBonus: 20,
+      constantEngagementBonus: 20,
+    })
+    setAdvancedConfig({
+      automaticRiskDetection: true,
+      realTimeAnalytics: true,
+      engagementNotifications: true,
+    })
+  }
+
+  const handleDeleteDeadzone = async (id: string) => {
+    try {
+      const response = await fetch(`/api/config/deadzones?id=${id}`, {
+        method: 'DELETE',
+      })
+      
+      if (!response.ok) throw new Error('Failed to delete deadzone')
+      
+      setDeadzone(undefined)
+      setIsEditing(false)
+      toast.success("Deadzone deleted successfully")
+    } catch (error) {
+      toast.error("Failed to delete deadzone")
+    }
+  }
 
   return (
     <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
@@ -119,112 +297,92 @@ export default function ConfigurationPage() {
                 <div>
                   <div className="flex justify-between mb-2">
                     <Label>Score for Participation (Hand Raising)</Label>
-                    <span className="text-muted-foreground">{participationScore} points</span>
+                    <span className="text-muted-foreground">{scoringConfig.participationScore} points</span>
                   </div>
                   <Slider
-                    value={[participationScore]}
-                    onValueChange={([value]: number[]) => setParticipationScore(value)}
+                    value={[scoringConfig.participationScore]}
+                    onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, participationScore: value }))}
                     min={1}
                     max={10}
                     step={1}
                     className="w-full"
                   />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Points awarded each time a student raises their hand
-                  </p>
                 </div>
 
                 <div>
                   <div className="flex justify-between mb-2">
                     <Label>Score for Engagement (per minute)</Label>
-                    <span className="text-muted-foreground">{engagementScore} points</span>
+                    <span className="text-muted-foreground">{scoringConfig.engagementScore} points</span>
                   </div>
                   <Slider
-                    value={[engagementScore]}
-                    onValueChange={([value]: number[]) => setEngagementScore(value)}
+                    value={[scoringConfig.engagementScore]}
+                    onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, engagementScore: value }))}
                     min={1}
                     max={10}
                     step={1}
                     className="w-full"
                   />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Points awarded per minute of active engagement
-                  </p>
                 </div>
 
                 <div>
                   <div className="flex justify-between mb-2">
                     <Label>Score for Attendance</Label>
-                    <span className="text-muted-foreground">{attendanceScore} points</span>
+                    <span className="text-muted-foreground">{scoringConfig.attendanceScore} points</span>
                   </div>
                   <Slider
-                    value={[attendanceScore]}
-                    onValueChange={([value]: number[]) => setAttendanceScore(value)}
+                    value={[scoringConfig.attendanceScore]}
+                    onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, attendanceScore: value }))}
                     min={1}
                     max={10}
                     step={1}
                     className="w-full"
                   />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Points awarded for each attendance 
-                  </p>
                 </div>
 
                 <div>
                   <div className="flex justify-between mb-2">
                     <Label>Score for Answering a question (You will be prompted to give points)</Label>
-                    <span className="text-muted-foreground">{answerScore} points</span>
+                    <span className="text-muted-foreground">{scoringConfig.answerScore} points</span>
                   </div>
                   <Slider
-                    value={[answerScore]}
-                    onValueChange={([value]: number[]) => setAnswerScore(value)}
+                    value={[scoringConfig.answerScore]}
+                    onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, answerScore: value }))}
                     min={1}
                     max={20}
                     step={1}
                     className="w-full"
                   />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Points awarded for each attendance 
-                  </p>
                 </div>
 
                 <div>
                   <div className="flex justify-between mb-2">
                     <Label>Score Penalty for Talking in class</Label>
-                    <span className="text-muted-foreground">{talkingBadScore} points</span>
+                    <span className="text-muted-foreground">{scoringConfig.talkingBadScore} points</span>
                   </div>
                   <Slider
-                    value={[talkingBadScore]}
-                    onValueChange={([value]: number[]) => setTalkingBadScore(value)}
+                    value={[scoringConfig.talkingBadScore]}
+                    onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, talkingBadScore: value }))}
                     min={-20}
                     max={0}
                     step={1}
                     className="w-full"
                   />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Points awarded for each attendance 
-                  </p>
                 </div>
 
                 <div>
                   <div className="flex justify-between mb-2">
                     <Label>Score Penalty for Absence</Label>
-                    <span className="text-muted-foreground">{attendanceBadScore} points</span>
+                    <span className="text-muted-foreground">{scoringConfig.attendanceBadScore} points</span>
                   </div>
                   <Slider
-                    value={[attendanceBadScore]}
-                    onValueChange={([value]: number[]) => setAttendanceBadScore(value)}
+                    value={[scoringConfig.attendanceBadScore]}
+                    onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, attendanceBadScore: value }))}
                     min={-20}
                     max={0}
                     step={1}
                     className="w-full"
                   />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Points awarded for each attendance 
-                  </p>
                 </div>
-
-                
               </div>
             </CardContent>
           </Card>
@@ -243,55 +401,46 @@ export default function ConfigurationPage() {
                 <div>
                   <div className="flex justify-between mb-2">
                     <Label>Decay Rate</Label>
-                    <span className="text-muted-foreground">{decayRate}</span>
+                    <span className="text-muted-foreground">{decayConfig.decayRate}</span>
                   </div>
                   <Slider
-                    value={[decayRate]}
-                    onValueChange={([value]: number[]) => setDecayRate(value)}
+                    value={[decayConfig.decayRate]}
+                    onValueChange={([value]) => setDecayConfig(prev => ({ ...prev, decayRate: value }))}
                     min={0}
                     max={1}
                     step={0.1}
                     className="w-full"
                   />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Rate at which scores decay over time
-                  </p>
                 </div>
 
                 <div>
                   <div className="flex justify-between mb-2">
                     <Label>Decay Interval (days)</Label>
-                    <span className="text-muted-foreground">{decayInterval} days</span>
+                    <span className="text-muted-foreground">{decayConfig.decayInterval} days</span>
                   </div>
                   <Slider
-                    value={[decayInterval]}
-                    onValueChange={([value]: number[]) => setDecayInterval(value)}
+                    value={[decayConfig.decayInterval]}
+                    onValueChange={([value]) => setDecayConfig(prev => ({ ...prev, decayInterval: value }))}
                     min={1}
                     max={7}
                     step={1}
                     className="w-full"
                   />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    How often scores decay
-                  </p>
                 </div>
 
                 <div>
                   <div className="flex justify-between mb-2">
                     <Label>Decay Threshold</Label>
-                    <span className="text-muted-foreground">{decayThreshold}</span>
+                    <span className="text-muted-foreground">{decayConfig.decayThreshold}</span>
                   </div>
                   <Slider
-                    value={[decayThreshold]}
-                    onValueChange={([value]: number[]) => setDecayThreshold(value)}
+                    value={[decayConfig.decayThreshold]}
+                    onValueChange={([value]) => setDecayConfig(prev => ({ ...prev, decayThreshold: value }))}
                     min={0}
                     max={1}
                     step={0.1}
                     className="w-full"
                   />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Minimum threshold for decay to take effect
-                  </p>
                 </div>
               </div>
             </CardContent>
@@ -311,62 +460,52 @@ export default function ConfigurationPage() {
                 <div>
                   <div className="flex justify-between mb-2">
                     <Label>Attendance Threshold</Label>
-                    <span className="text-muted-foreground">{attendanceThreshold}%</span>
+                    <span className="text-muted-foreground">{thresholdConfig.attendanceThreshold}%</span>
                   </div>
                   <Slider
-                    value={[attendanceThreshold]}
-                    onValueChange={([value]: number[]) => setAttendanceThreshold(value)}
+                    value={[thresholdConfig.attendanceThreshold]}
+                    onValueChange={([value]) => setThresholdConfig(prev => ({ ...prev, attendanceThreshold: value }))}
                     min={30}
                     max={90}
                     step={5}
                     className="w-full"
                   />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Minimum required attendance percentage
-                  </p>
                 </div>
 
                 <div>
                   <div className="flex justify-between mb-2">
                     <Label>Engagement Threshold</Label>
-                    <span className="text-muted-foreground">{engagementThreshold}%</span>
+                    <span className="text-muted-foreground">{thresholdConfig.engagementThreshold}%</span>
                   </div>
                   <Slider
-                    value={[engagementThreshold]}
-                    onValueChange={([value]: number[]) => setEngagementThreshold(value)}
+                    value={[thresholdConfig.engagementThreshold]}
+                    onValueChange={([value]) => setThresholdConfig(prev => ({ ...prev, engagementThreshold: value }))}
                     min={30}
                     max={90}
                     step={5}
                     className="w-full"
                   />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Minimum required engagement percentage
-                  </p>
                 </div>
 
                 <div>
                   <div className="flex justify-between mb-2">
                     <Label>Students at Risk Threshold</Label>
-                    <span className="text-muted-foreground">{atRiskThreshold}%</span>
+                    <span className="text-muted-foreground">{thresholdConfig.atRiskThreshold}%</span>
                   </div>
                   <Slider
-                    value={[atRiskThreshold]}
-                    onValueChange={([value]: number[]) => setAtRiskThreshold(value)}
+                    value={[thresholdConfig.atRiskThreshold]}
+                    onValueChange={([value]) => setThresholdConfig(prev => ({ ...prev, atRiskThreshold: value }))}
                     min={40}
                     max={80}
                     step={5}
                     className="w-full"
                   />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Threshold below which students are considered at risk
-                  </p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* Deadzones Tab */}
         <TabsContent value="deadzones" className="space-y-6">
           <Card>
             <CardHeader>
@@ -412,18 +551,21 @@ export default function ConfigurationPage() {
                       Enable bonus for three consecutive days of participation
                     </p>
                   </div>
-                  <Switch checked={enableThreeStreak} onCheckedChange={setEnableThreeStreak} />
+                  <Switch 
+                    checked={bonusConfig.enableThreeStreak} 
+                    onCheckedChange={(checked) => setBonusConfig(prev => ({ ...prev, enableThreeStreak: checked }))} 
+                  />
                 </div>
 
-                {enableThreeStreak && (
+                {bonusConfig.enableThreeStreak && (
                   <div>
                     <div className="flex justify-between mb-2">
                       <Label>Three-Day Streak Bonus Amount</Label>
-                      <span className="text-muted-foreground">{threeStreakBonus} points</span>
+                      <span className="text-muted-foreground">{bonusConfig.threeStreakBonus} points</span>
                     </div>
                     <Slider
-                      value={[threeStreakBonus]}
-                      onValueChange={([value]: number[]) => setThreeStreakBonus(value)}
+                      value={[bonusConfig.threeStreakBonus]}
+                      onValueChange={([value]) => setBonusConfig(prev => ({ ...prev, threeStreakBonus: value }))}
                       min={5}
                       max={20}
                       step={1}
@@ -439,18 +581,21 @@ export default function ConfigurationPage() {
                       Enable bonus for five consecutive days of participation
                     </p>
                   </div>
-                  <Switch checked={enableFiveStreak} onCheckedChange={setEnableFiveStreak} />
+                  <Switch 
+                    checked={bonusConfig.enableFiveStreak} 
+                    onCheckedChange={(checked) => setBonusConfig(prev => ({ ...prev, enableFiveStreak: checked }))} 
+                  />
                 </div>
 
-                {enableFiveStreak && (
+                {bonusConfig.enableFiveStreak && (
                   <div>
                     <div className="flex justify-between mb-2">
                       <Label>Five-Day Streak Bonus Amount</Label>
-                      <span className="text-muted-foreground">{fiveStreakBonus} points</span>
+                      <span className="text-muted-foreground">{bonusConfig.fiveStreakBonus} points</span>
                     </div>
                     <Slider
-                      value={[fiveStreakBonus]}
-                      onValueChange={([value]: number[]) => setFiveStreakBonus(value)}
+                      value={[bonusConfig.fiveStreakBonus]}
+                      onValueChange={([value]) => setBonusConfig(prev => ({ ...prev, fiveStreakBonus: value }))}
                       min={10}
                       max={30}
                       step={1}
@@ -462,19 +607,16 @@ export default function ConfigurationPage() {
                 <div>
                   <div className="flex justify-between mb-2">
                     <Label>Constant Engagement Bonus</Label>
-                    <span className="text-muted-foreground">{constantEngagementBonus} points</span>
+                    <span className="text-muted-foreground">{bonusConfig.constantEngagementBonus} points</span>
                   </div>
                   <Slider
-                    value={[constantEngagementBonus]}
-                    onValueChange={([value]: number[]) => setConstantEngagementBonus(value)}
+                    value={[bonusConfig.constantEngagementBonus]}
+                    onValueChange={([value]) => setBonusConfig(prev => ({ ...prev, constantEngagementBonus: value }))}
                     min={5}
                     max={30}
                     step={1}
                     className="w-full"
                   />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Bonus points for maintaining high engagement throughout the class
-                  </p>
                 </div>
               </div>
             </CardContent>
@@ -498,7 +640,10 @@ export default function ConfigurationPage() {
                       Automatically detect and flag students at risk
                     </p>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch 
+                    checked={advancedConfig.automaticRiskDetection}
+                    onCheckedChange={(checked) => setAdvancedConfig(prev => ({ ...prev, automaticRiskDetection: checked }))}
+                  />
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -508,7 +653,10 @@ export default function ConfigurationPage() {
                       Enable real-time performance analytics
                     </p>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch 
+                    checked={advancedConfig.realTimeAnalytics}
+                    onCheckedChange={(checked) => setAdvancedConfig(prev => ({ ...prev, realTimeAnalytics: checked }))}
+                  />
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -518,7 +666,10 @@ export default function ConfigurationPage() {
                       Send notifications for low engagement
                     </p>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch 
+                    checked={advancedConfig.engagementNotifications}
+                    onCheckedChange={(checked) => setAdvancedConfig(prev => ({ ...prev, engagementNotifications: checked }))}
+                  />
                 </div>
               </div>
             </CardContent>
@@ -527,8 +678,8 @@ export default function ConfigurationPage() {
       </Tabs>
 
       <div className="flex justify-end gap-4">
-        <Button variant="outline">Reset to Defaults</Button>
-        <Button>Save Changes</Button>
+        <Button variant="outline" onClick={handleResetDefaults}>Reset to Defaults</Button>
+        <Button onClick={handleSaveConfigs}>Save Changes</Button>
       </div>
     </div>
   )
