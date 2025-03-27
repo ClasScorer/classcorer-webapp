@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -18,14 +18,40 @@ interface SlidesPopupProps {
   isOpen: boolean;
   onClose: () => void;
   className?: string;
+  presentationId?: string;
+  lectureId?: string;
+  embedUrl?: string;
 }
 
 export default function SlidesPopup({ 
   isOpen, 
   onClose,
-  className
+  className,
+  presentationId,
+  lectureId,
+  embedUrl
 }: SlidesPopupProps) {
   const [activityLog, setActivityLog] = useState<ActivityLogItem[]>([]);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  // Toggle fullscreen function
+  const toggleFullScreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen()
+        .then(() => setIsFullScreen(true))
+        .catch(err => {
+          console.error(`Error attempting to enable fullscreen: ${err.message}`);
+        });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen()
+          .then(() => setIsFullScreen(false))
+          .catch(err => {
+            console.error(`Error attempting to exit fullscreen: ${err.message}`);
+          });
+      }
+    }
+  };
 
   // Example useEffect for demonstration - could fetch or subscribe to real-time events
   useEffect(() => {
@@ -57,6 +83,18 @@ export default function SlidesPopup({
     }
   }, [isOpen]);
 
+  // Listen for fullscreen changes initiated by browser (e.g., Escape key)
+  useEffect(() => {
+    const handleFullScreenChange = () => {
+      setIsFullScreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullScreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullScreenChange);
+    };
+  }, []);
+
   if (!isOpen) return null;
 
   return (
@@ -68,14 +106,24 @@ export default function SlidesPopup({
         {/* Header */}
         <div className="flex justify-between items-center p-4 border-b">
           <h2 className="text-2xl font-semibold">Presentation Slides</h2>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={onClose}
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={toggleFullScreen}
+              title={isFullScreen ? "Exit fullscreen" : "Enter fullscreen"}
+            >
+              {isFullScreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={onClose}
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
         
         {/* Content area */}
@@ -84,10 +132,19 @@ export default function SlidesPopup({
           <div className="w-[70%] h-full p-4 overflow-auto">
             <Card className="h-full">
               <CardContent className="flex items-center justify-center h-full p-6">
-                <div className="text-center space-y-2">
-                  <p className="text-xl text-muted-foreground">Slides content will appear here</p>
-                  <p className="text-sm text-muted-foreground">This area will display presentation slides</p>
-                </div>
+                {embedUrl ? (
+                  <iframe
+                    src={embedUrl}
+                    title="Presentation"
+                    className="w-full h-full border-0"
+                    allowFullScreen
+                  />
+                ) : (
+                  <div className="text-center space-y-2">
+                    <p className="text-xl text-muted-foreground">Slides content will appear here</p>
+                    <p className="text-sm text-muted-foreground">This area will display presentation slides</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
