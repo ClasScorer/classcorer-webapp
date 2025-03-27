@@ -179,6 +179,85 @@ model CanvasConfig {
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model ScoringConfig {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  // Scoring Settings
+  participationScore    Int       @default(5)
+  engagementScore      Int       @default(5)
+  attendanceScore      Int       @default(5)
+  answerScore          Int       @default(15)
+  talkingBadScore      Int       @default(-10)
+  attendanceBadScore   Int       @default(-10)
+  repeatedBadScore     Int       @default(-20)
+}
+
+model ThresholdConfig {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  // Threshold Settings
+  attendanceThreshold   Int       @default(70)
+  engagementThreshold   Int       @default(60)
+  atRiskThreshold       Int       @default(60)
+  maxScoreThreshold     Int       @default(100)
+  minScoreThreshold     Int       @default(0)
+}
+
+model DecayConfig {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  // Decay Settings
+  decayRate            Float     @default(0.5)
+  decayInterval        Int       @default(1)
+  decayThreshold       Float     @default(0.5)
+}
+
+model BonusConfig {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  // Bonus Settings
+  enableThreeStreak    Boolean   @default(true)
+  threeStreakBonus     Int       @default(10)
+  enableFiveStreak     Boolean   @default(true)
+  fiveStreakBonus      Int       @default(20)
+  constantEngagementBonus Int     @default(20)
+}
+
+model AdvancedConfig {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  // Advanced Settings
+  automaticRiskDetection Boolean  @default(true)
+  realTimeAnalytics     Boolean   @default(true)
+  engagementNotifications Boolean @default(true)
+}
+
+model Deadzone {
+  id          String    @id @default(cuid())
+  userId      String
+  name        String
+  coordinates Json      // Store the deadzone coordinates as JSON
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([userId, name])
+}
+
 model StudentEngagement {
   id                 String   @id @default(cuid())
   timestamp          DateTime @default(now())
