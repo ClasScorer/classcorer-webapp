@@ -93,7 +93,7 @@ export interface Course {
   instructor: {
     name: string;
     email: string;
-  };
+  } | string; // Can be either an object or a string
   startDate?: Date | null;
   endDate?: Date | null;
   credits: number;
@@ -558,10 +558,7 @@ export async function loadCourses(): Promise<Course[]> {
           name: course.name,
           code: course.code,
           description: course.description || '',
-          instructor: {
-            name: course.instructor.name,
-            email: course.instructor.email
-          },
+          instructor: course.instructor,
           startDate: course.startDate,
           endDate: course.endDate,
           credits: course.credits,
@@ -676,16 +673,31 @@ export async function loadCalendarEvents(): Promise<any[]> {
 
 export async function getStudentsByCourse(courseId: string): Promise<Student[]> {
   try {
-    const students = await fetchStudents();
-    if (!Array.isArray(students)) {
-      console.error("Unexpected response format from fetchStudents");
-      return [];
+    // Direct API call with courseId filter for better performance
+    const baseUrl = getBaseUrl();
+    const res = await fetch(`${baseUrl}/api/students?courseId=${courseId}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store'
+    });
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      const errorMessage = errorData.error || `Failed to fetch students for course: ${res.status} ${res.statusText}`;
+      console.error(errorMessage);
+      throw new Error(errorMessage);
     }
     
-    return students.filter((student: Student) => {
-      return student.courseId === courseId || 
-        (student.enrollments && student.enrollments.some(e => e.courseId === courseId));
-    });
+    const data = await res.json();
+    
+    // Handle both response formats: either direct array or {students: [...]} format
+    const students = Array.isArray(data) ? data : data.students || [];
+    console.log(`Retrieved ${students.length} students for course ${courseId}`);
+    
+    return students;
   } catch (error) {
     console.error(`Error in getStudentsByCourse for courseId ${courseId}:`, error);
     throw new Error(`Failed to get students for course: ${error instanceof Error ? error.message : String(error)}`);
@@ -707,8 +719,32 @@ export async function getCourseById(id: string): Promise<Course | null> {
 }
 
 export async function getStudentById(studentId: string): Promise<Student | null> {
-  const students = await fetchStudents();
-  return students.find((student: Student) => student.id === studentId) || null;
+  try {
+    const baseUrl = getBaseUrl();
+    const res = await fetch(`${baseUrl}/api/students/${studentId}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store'
+    });
+    
+    if (!res.ok) {
+      if (res.status === 404) {
+        return null; // Student not found
+      }
+      const errorData = await res.json().catch(() => ({}));
+      const errorMessage = errorData.error || `Failed to fetch student: ${res.status} ${res.statusText}`;
+      console.error(errorMessage);
+      throw new Error(errorMessage);
+    }
+    
+    return await res.json();
+  } catch (error) {
+    console.error(`Error in getStudentById for studentId ${studentId}:`, error);
+    return null;
+  }
 }
 
 export async function getEventsByCourse(courseId: string): Promise<any[]> {
@@ -737,7 +773,7 @@ export function formatTime(time: string): string {
 export async function fetchCourses() {
   const baseUrl = getBaseUrl();
   try {
-    const res = await fetch(`${baseUrl}/api/courses`, {
+    const res = await fetch(`${baseUrl}/api/courses?include=students`, {
       method: 'GET',
       credentials: 'include',
       headers: {
@@ -753,7 +789,17 @@ export async function fetchCourses() {
       throw new Error(errorMessage);
     }
     
-    return res.json();
+    const data = await res.json();
+    console.log(`Retrieved ${data.length || 0} courses, checking student counts...`);
+    
+    // Check students for each course
+    if (Array.isArray(data)) {
+      data.forEach(course => {
+        console.log(`Course ${course.name} (${course.id}) has ${Array.isArray(course.students) ? course.students.length : 0} students`);
+      });
+    }
+    
+    return data;
   } catch (error) {
     console.error("Error fetching courses:", error);
     throw error;
@@ -763,7 +809,7 @@ export async function fetchCourses() {
 export async function fetchStudents() {
   const baseUrl = getBaseUrl();
   try {
-    const res = await fetch(`${baseUrl}/api/students`, {
+    const res = await fetch(`${baseUrl}/api/students?limit=1000`, { // Set larger limit to get more students
       method: 'GET',
       credentials: 'include',
       headers: {
@@ -779,7 +825,11 @@ export async function fetchStudents() {
       throw new Error(errorMessage);
     }
     
-    return res.json();
+    const data = await res.json();
+    console.log(`Retrieved ${data.students?.length || 0} total students`);
+    
+    // Return just the students array from the response
+    return data.students || [];
   } catch (error) {
     console.error("Error fetching students:", error);
     throw error;
@@ -1057,11 +1107,27 @@ export async function updateBulkAttendance(lectureId: string, records: Array<{
 
 // Helper function to transform course data by properly formatting StudentEnrollment to Student
 export function transformCourseData(course: any) {
+  // If instructor is an object with properties, keep it; otherwise wrap in an object
+  const instructorObj = course.instructor && typeof course.instructor === 'object' 
+    ? course.instructor
+    : { name: 'Instructor', email: course.instructor || 'no-email' };
+
   return {
     ...course,
+    instructor: instructorObj,
     students: Array.isArray(course.students) 
-      ? course.students.map((enrollment: any) => 
-          enrollment.student ? enrollment.student : enrollment)
+      ? course.students.map((item: any) => {
+          // Check if this is an enrollment object or a student object
+          if (item.student) {
+            return item.student;
+          } else if (item.id) {
+            // This is already a student object
+            return item;
+          } else {
+            console.warn('Unknown student format:', item);
+            return null;
+          }
+        }).filter(Boolean) // Remove any null values
       : []
   };
 } 

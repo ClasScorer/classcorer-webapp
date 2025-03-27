@@ -27,13 +27,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized: User ID missing' }, { status: 401 })
     }
     
+    // Get the user's ID from the session
+    const userId = session.user.id;
+    
     // Parse query parameters
     const searchParams = request.nextUrl.searchParams;
     const include = searchParams.get('include');
     const courseId = searchParams.get('courseId');
     const search = searchParams.get('search');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const page = Number(searchParams.get('page') || '1');
+    const limit = Number(searchParams.get('limit') || '1000'); // Increased from 10 to 1000 to ensure we get all students
     const minGrade = searchParams.get('minGrade') ? parseInt(searchParams.get('minGrade') || '0') : undefined;
     const maxGrade = searchParams.get('maxGrade') ? parseInt(searchParams.get('maxGrade') || '100') : undefined;
     const minAttendance = searchParams.get('minAttendance') ? parseInt(searchParams.get('minAttendance') || '0') : undefined;
@@ -45,11 +48,44 @@ export async function GET(request: NextRequest) {
 
     // Course filter
     if (courseId) {
+      console.log(`Filtering students by courseId: ${courseId}`);
+      
+      // Check how many enrollments exist for this course
+      const enrollmentsCount = await prisma.studentEnrollment.count({
+        where: { courseId }
+      });
+      console.log(`Found ${enrollmentsCount} enrollments for courseId: ${courseId}`);
+      
+      // Include enrollments for the specified course
       whereConditions.enrollments = {
         some: {
           courseId
         }
       };
+    } else {
+      // If no courseId is provided, get all students for the current user
+      console.log(`No courseId provided, getting all students for user: ${userId}`);
+      
+      // When no course is specified, we still need to find students related to this user
+      whereConditions.OR = [
+        // Students enrolled in courses taught by this user
+        {
+          enrollments: {
+            some: {
+              course: {
+                instructorId: userId
+              }
+            }
+          }
+        },
+        // Students directly associated with this user (if applicable)
+        {
+          professorId: userId
+        }
+      ];
+      
+      // Log what we're doing
+      console.log("Using broader query to find all students related to current user");
     }
 
     // Text search (name or email)
@@ -101,6 +137,20 @@ export async function GET(request: NextRequest) {
         name: 'asc'
       }
     });
+
+    // Extra logging for debugging
+    console.log(`Found ${students.length} students matching query. Pagination: page ${page}, limit ${limit}, skip ${skip}`);
+    if (students.length > 0) {
+      console.log('First few students:');
+      students.slice(0, 3).forEach(student => {
+        console.log({
+          id: student.id,
+          name: student.name,
+          enrollmentsCount: student.enrollments?.length || 0,
+          enrollmentCourseIds: student.enrollments?.map(e => e.courseId) || []
+        });
+      });
+    }
 
     // Post-process filtering for complex conditions
     // These filters need the relational data so we do them in memory
