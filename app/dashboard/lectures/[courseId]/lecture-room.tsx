@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Camera, Presentation, Mic, MicOff, Video, VideoOff, Share2, MessageSquare, X, Play, Square, Save, ScreenShare, Send, Ghost, Bug } from "lucide-react"
+import { Camera, Presentation, Mic, MicOff, Video, VideoOff, Share2, MessageSquare, X, Play, Square, Save, ScreenShare, Send, Ghost, Bug, MonitorIcon } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Course, Student } from "@/lib/data"
@@ -105,74 +105,75 @@ interface HandRaising {
 
 interface BoundingBox {
   x: number;
-  y: number;
-  width: number;
-  height: number;
+  y: number
+  width: number
+  height: number
 }
 
 interface FaceData {
-  person_id: string;
-  recognition_status: "new" | "known";
-  attention_status: "focused" | "unfocused";
-  hand_raising_status: HandRaising;
-  confidence: number;
-  bounding_box: BoundingBox;
+  person_id: string
+  recognition_status: "new" | "known"
+  // Allow both uppercase and lowercase versions
+  attention_status: "focused" | "unfocused" | "FOCUSED" | "UNFOCUSED"
+  hand_raising_status: HandRaising
+  confidence: number
+  bounding_box: BoundingBox
 }
 
 interface FaceDetectionSummary {
-  new_faces: number;
-  known_faces: number;
-  focused_faces: number;
-  unfocused_faces: number;
-  hands_raised: number;
+  new_faces: number
+  known_faces: number
+  focused_faces: number
+  unfocused_faces: number
+  hands_raised: number
 }
 
 interface FaceDetectionResponse {
-  lecture_id: string;
-  timestamp: string;
-  total_faces: number;
-  faces: FaceData[];
-  summary: FaceDetectionSummary;
+  lecture_id: string
+  timestamp: string
+  total_faces: number
+  faces: FaceData[]
+  summary: FaceDetectionSummary
 }
 
 // Add enhanced types for slide management
 interface SlideData {
-  id: string;
-  title: string;
-  thumbnailUrl: string;
-  index: number;
-  current: boolean;
+  id: string
+  title: string
+  thumbnailUrl: string
+  index: number
+  current: boolean
 }
 
 interface PresentationData {
-  id: string;
-  title: string;
-  slides: SlideData[];
+  id: string
+  title: string
+  slides: SlideData[]
 }
 
 // Enhanced face detection types
 interface AttentionMetrics {
-  focusScore: number;
-  focusDuration: number;
-  distractionCount: number;
-  engagementLevel: 'high' | 'medium' | 'low';
+  focusScore: number
+  focusDuration: number
+  distractionCount: number
+  engagementLevel: 'high' | 'medium' | 'low'
 }
 
 interface EnhancedFaceData extends FaceData {
-  attentionMetrics?: AttentionMetrics;
-  name?: string;
-  lastDetectedAt?: string;
-  consecutiveFrames?: number;
+  attentionMetrics?: AttentionMetrics
+  name?: string
+  lastDetectedAt?: string
+  consecutiveFrames?: number
 }
 
 interface EnhancedFaceDetectionResponse extends FaceDetectionResponse {
-  classEngagement: number;
+  classEngagement: number
   timeSeries?: {
-    timestamp: string;
-    focusedPercentage: number;
-    totalFaces: number;
-  }[];
-  faces: EnhancedFaceData[];
+    timestamp: string
+    focusedPercentage: number
+    totalFaces: number
+  }[]
+  faces: EnhancedFaceData[]
 }
 
 export function LectureRoom({ course, students }: LectureRoomProps) {
@@ -577,6 +578,72 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       }, 'image/jpeg', 0.8); // JPEG at 80% quality
     });
   };
+  const normalizeCoordinates = (box: BoundingBox): BoundingBox => {
+    // If coordinates already appear to be normalized (between 0-1), return as is
+    if (box.x <= 1 && box.y <= 1 && box.width <= 1 && box.height <= 1) {
+      return box;
+    }
+    
+    // Get video dimensions for normalization
+    const videoWidth = videoRef.current?.videoWidth || 1920; // Fallback to common width
+    const videoHeight = videoRef.current?.videoHeight || 1080; // Fallback to common height
+    
+    // Normalize pixel values to 0-1 range
+    return {
+      x: Math.min(1, Math.max(0, box.x / videoWidth)),
+      y: Math.min(1, Math.max(0, box.y / videoHeight)),
+      width: Math.min(1, Math.max(0, box.width / videoWidth)),
+      height: Math.min(1, Math.max(0, box.height / videoHeight))
+    };
+  };
+
+  const enhanceApiResponse = (data: FaceDetectionResponse): EnhancedFaceDetectionResponse => {
+    // Enhanced faces with additional metrics
+    const enhancedFaces = data.faces.map(face => {
+      // Try to find the student that matches the detected face
+      const student = students.find(s => s.id.toString() === face.person_id);
+      
+      // Normalize bounding box coordinates if they are in pixel values
+      // Assuming the video dimensions are available (if not, you'll need another approach)
+      const normalizedBoundingBox = normalizeCoordinates(face.bounding_box);
+      
+      // Generate the additional metrics that the UI expects
+      return {
+        ...face,
+        // Ensure correct case for attention_status (API uses uppercase)
+        attention_status: face.attention_status.toLowerCase() as "focused" | "unfocused",
+        // Add name if we found a matching student
+        name: student?.name || "Unknown Person",
+        bounding_box: normalizedBoundingBox,
+        // Add additional metrics needed for UI display
+        attentionMetrics: {
+          focusScore: face.attention_status === "FOCUSED" ? 85 : 30,
+          focusDuration: Math.round(Math.random() * 60), // Placeholder until API provides this
+          distractionCount: face.attention_status === "FOCUSED" ? 1 : 4,
+          engagementLevel: face.attention_status === "FOCUSED" ? 'high' : 'low'
+        },
+        lastDetectedAt: new Date().toISOString(),
+      };
+    });
+  
+    // Calculate overall class engagement (% of focused students)
+    const classEngagement = data.total_faces > 0 
+      ? (data.summary.focused_faces / data.total_faces) * 100
+      : 0;
+      
+    // Return the enhanced data structure
+    return {
+      ...data,
+      faces: enhancedFaces,
+      classEngagement,
+      // Add time series data structure for trends
+      timeSeries: detectionHistory.slice(-10).map((history, index) => ({
+        timestamp: new Date(Date.now() - (10 - index) * 5000).toISOString(),
+        focusedPercentage: history?.summary?.focused_faces / Math.max(history?.total_faces, 1) * 100 || 0,
+        totalFaces: history?.total_faces || 0
+      }))
+    };
+  };
 
   // Function to send frame to API and get face detection results
   const sendFrameToAPI = async (frameBlob: Blob) => {
@@ -584,11 +651,12 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     
     const formData = new FormData();
     formData.append('image', frameBlob);
-    formData.append('lecture_id', lectureId);
+    formData.append('lectureId', lectureId);
+    formData.append('timestamp', new Date().toISOString());
     
     try {
       // Replace with your actual API endpoint
-      const response = await fetch('/api/face-detection', {
+      const response = await fetch('/api/process-image', {
         method: 'POST',
         body: formData,
       });
@@ -597,12 +665,16 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
         throw new Error(`API error: ${response.status}`);
       }
       
+      // Get the base response data
       const data: FaceDetectionResponse = await response.json();
       
-      // Update the face data state
-      setFaceData(data as EnhancedFaceDetectionResponse);
+      // Transform the API response into the enhanced format
+      const enhancedData = enhanceApiResponse(data);
       
-      // Also send the data to our engagement API to store in the database
+      // Update state with the enhanced data
+      setFaceData(enhancedData);
+      
+      // Also send the original data to our engagement API to store
       saveEngagementData(data);
       
       return data;
@@ -938,56 +1010,31 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     const mockData: EnhancedFaceDetectionResponse = {
       lecture_id: lectureId,
       timestamp: new Date().toISOString(),
-      total_faces: hasStudents ? Math.min(students.length, 5) : 3, // Use 3 as default if no students
-      faces: hasStudents 
-        ? students.slice(0, 5).map((student, index) => ({
-            person_id: student.id.toString(),
-            recognition_status: Math.random() > 0.2 ? "known" : "new",
-            attention_status: Math.random() > 0.3 ? "focused" : "unfocused",
-            hand_raising_status: {
-              is_hand_raised: Math.random() > 0.8,
-              confidence: Math.random() * 0.5 + 0.5,
-              hand_position: { x: Math.random() * 0.8, y: Math.random() * 0.8 }
-            },
-            confidence: Math.random() * 0.5 + 0.5,
-            bounding_box: {
-              x: Math.random() * 0.5,
-              y: Math.random() * 0.5,
-              width: Math.random() * 0.2 + 0.1,
-              height: Math.random() * 0.2 + 0.1
-            },
-            name: student.name,
-            attentionMetrics: {
-              focusScore: Math.round(Math.random() * 100),
-              focusDuration: Math.round(Math.random() * 60),
-              distractionCount: Math.round(Math.random() * 5),
-              engagementLevel: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low'
-            }
-          }))
-        : Array(3).fill(0).map((_, index) => ({
-            person_id: `mock-${index}`,
-            recognition_status: "new",
-            attention_status: Math.random() > 0.3 ? "focused" : "unfocused",
-            hand_raising_status: {
-              is_hand_raised: Math.random() > 0.8,
-              confidence: Math.random() * 0.5 + 0.5,
-              hand_position: { x: Math.random() * 0.8, y: Math.random() * 0.8 }
-            },
-            confidence: Math.random() * 0.5 + 0.5,
-            bounding_box: {
-              x: Math.random() * 0.5,
-              y: Math.random() * 0.5,
-              width: Math.random() * 0.2 + 0.1,
-              height: Math.random() * 0.2 + 0.1
-            },
-            name: `Mock Student ${index + 1}`,
-            attentionMetrics: {
-              focusScore: Math.round(Math.random() * 100),
-              focusDuration: Math.round(Math.random() * 60),
-              distractionCount: Math.round(Math.random() * 5),
-              engagementLevel: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low'
-            }
-          })),
+      total_faces: Math.min(students.length, 5),
+      faces: students.slice(0, 5).map((student, index) => ({
+        person_id: student.id.toString(),
+        recognition_status: Math.random() > 0.2 ? "known" : "new",
+        attention_status: Math.random() > 0.3 ? "FOCUSED" : "UNFOCUSED",
+        hand_raising_status: {
+          is_hand_raised: Math.random() > 0.8,
+          confidence: Math.random() * 0.5 + 0.5,
+          hand_position: { x: Math.random() * 0.8, y: Math.random() * 0.8, z: Math.random() * 0.8 }
+        },
+        confidence: Math.random() * 0.5 + 0.5,
+        bounding_box: {
+          x: Math.random() * 0.5,
+          y: Math.random() * 0.5,
+          width: Math.random() * 0.2 + 0.1,
+          height: Math.random() * 0.2 + 0.1
+        },
+        name: student.name,
+        attentionMetrics: {
+          focusScore: Math.round(Math.random() * 100),
+          focusDuration: Math.round(Math.random() * 60),
+          distractionCount: Math.round(Math.random() * 5),
+          engagementLevel: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low'
+        }
+      })),
       summary: {
         new_faces: Math.floor(Math.random() * 2),
         known_faces: Math.floor(Math.random() * 4) + 1,
@@ -1088,6 +1135,34 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     return `${hours > 0 ? `${hours}h ` : ''}${minutes}m ${seconds}s`;
   };
 
+  // Add function to open presentation in a new window
+  const openPresentationDisplay = () => {
+    // Generate a unique session ID for this presentation window
+    const sessionId = Date.now().toString();
+    
+    // Construct URL with presentation data
+    let url = `/presentation?`;
+    if (presentationData) {
+      url += `presentationId=${presentationData.id}&`;
+    }
+    if (embedUrl) {
+      url += `embedUrl=${encodeURIComponent(embedUrl)}&`;
+    }
+    if (lectureId) {
+      url += `lectureId=${lectureId}&`;
+    }
+    url += `sessionId=${sessionId}`;
+    
+    // Open in a new window
+    window.open(
+      url, 
+      'presentationWindow', 
+      'toolbar=no,location=no,directories=no,status=no,menubar=no,scrollbars=yes,resizable=yes,width=1200,height=800'
+    );
+    
+    toast.success("Presentation opened in new window");
+  };
+
   // Return JSX for the component with enhanced slides and detection info
   return (
     <div className="flex flex-col h-full">
@@ -1128,7 +1203,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                   </div>
                   <Button 
                     variant="outline" 
-                    size="sm" 
+                    size="sm"
                     className="mt-2"
                     onClick={toggleStopwatch}
                   >
@@ -1136,7 +1211,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                   </Button>
                 </div>
               )}
-              
+                
               {!lectureStarted ? (
                 <div className="space-y-3">
                   <div className="space-y-2">
@@ -1165,7 +1240,6 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                         Use scheduled time
                       </label>
                     </div>
-                    
                     {useScheduledTime && (
                       <div className="space-y-1">
                         <label htmlFor="scheduledTime" className="text-xs text-muted-foreground">
@@ -1176,7 +1250,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                           type="datetime-local"
                           value={scheduleTime}
                           onChange={(e) => setScheduleTime(e.target.value)}
-                          className="w-full"
+                          className="w-full" 
                         />
                         <div className="text-xs text-muted-foreground mt-1">
                           {scheduleTime && new Date(scheduleTime).toLocaleString()}
@@ -1356,9 +1430,9 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                       {faceData.timeSeries && faceData.timeSeries.length > 0 ? (
                         <div className="h-40 flex items-end space-x-1">
                           {faceData.timeSeries.map((point, i) => (
-                            <div 
-                              key={i} 
-                              className="bg-blue-500 w-full rounded-t" 
+                            <div   
+                              key={i}
+                              className="bg-blue-500 w-full rounded-t"
                               style={{ 
                                 height: `${Math.max(5, point.focusedPercentage)}%`,
                                 opacity: 0.3 + (i / faceData.timeSeries!.length * 0.7)
@@ -1484,13 +1558,13 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
           <div className="space-y-4">
             {!isSharing && !embedUrl && !currentSlide && !presentationData && (
               <div className="flex flex-col gap-4">
-                <Input
+                <Input 
                   placeholder="Enter Google Slides URL"
                   value={presentationUrl}
                   onChange={handlePresentationUrl}
                 />
                 <div className="flex items-center">
-                  <p className="text-sm text-gray-500 mr-2">Or upload slides:</p>
+                  <p className="text-sm text-gray-500 mr-2">Or upload slides:</p>  
                   <input
                     type="file"
                     onChange={handleSlideUpload}
@@ -1512,14 +1586,13 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
               {/* Main slide view */}
               <div className="md:col-span-3 aspect-video bg-black flex items-center justify-center rounded-md overflow-hidden">
                 {embedUrl && (
-                  <iframe
+                  <iframe 
                     src={embedUrl}
                     title="Presentation"
                     className="w-full h-full border-0"
                     allowFullScreen
                   ></iframe>
                 )}
-                
                 {currentSlide && !embedUrl && (
                   <img
                     src={currentSlide}
@@ -1527,7 +1600,6 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                     className="max-h-full max-w-full"
                   />
                 )}
-                
                 {presentationData && !embedUrl && !currentSlide && (
                   <img
                     src={presentationData.slides[activeSlideIndex].thumbnailUrl}
@@ -1535,11 +1607,9 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                     className="max-h-full max-w-full"
                   />
                 )}
-                
                 {isSharing && !embedUrl && !currentSlide && !presentationData && (
                   <div className="text-white">Screen sharing active...</div>
                 )}
-                
                 {!isSharing && !embedUrl && !currentSlide && !presentationData && (
                   <div className="text-white opacity-50 flex flex-col items-center">
                     <Presentation className="h-12 w-12 mb-2" />
@@ -1556,9 +1626,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                     {presentationData.slides.map((slide, index) => (
                       <div
                         key={slide.id}
-                        className={`rounded-md overflow-hidden border-2 cursor-pointer transition-all ${
-                          index === activeSlideIndex ? 'border-primary' : 'border-transparent'
-                        }`}
+                        className={`rounded-md overflow-hidden border-2 cursor-pointer transition-all ${index === activeSlideIndex ? 'border-primary' : 'border-transparent'}`}
                         onClick={() => changeSlide(index)}
                       >
                         <div className="relative">
@@ -1599,6 +1667,16 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                 </Button>
               </div>
             )}
+            
+            {/* Add this button after your existing presentation controls */}
+            <Button 
+              onClick={openPresentationDisplay}
+              variant="outline"
+              className="flex items-center gap-2 mt-4"
+            >
+              <MonitorIcon className="h-4 w-4" />
+              Open on Second Screen
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -1623,15 +1701,13 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                     </div>
                   ) : (
                     messages.map((message, index) => (
-                      <div
+                      <div 
                         key={index}
-                        className={`flex gap-3 ${
-                          message.student.id === 'professor' ? 'justify-end' : ''
-                        }`}
+                        className={`flex gap-3 ${message.student.id === 'professor' ? 'justify-end' : ''}`}
                       >
                         {message.student.id !== 'professor' && (
                           <Avatar>
-                            <AvatarImage
+                            <AvatarImage 
                               src={message.student.avatar || ""}
                               alt={message.student.name}
                             />
@@ -1671,7 +1747,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                 </div>
               </ScrollArea>
               <div className="flex gap-2">
-                <Input
+                <Input 
                   placeholder="Type your message..."
                   value={messageInput}
                   onChange={e => setMessageInput(e.target.value)}
@@ -1712,4 +1788,4 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       </AlertDialog>
     </div>
   )
-} 
+}
