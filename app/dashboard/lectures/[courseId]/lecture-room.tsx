@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Camera, Presentation, Mic, MicOff, Video, VideoOff, Share2, MessageSquare, X, Play, Square, Save, ScreenShare, Send, Ghost, Bug } from "lucide-react"
+import { Camera, Presentation, Mic, MicOff, Video, VideoOff, Share2, MessageSquare, X, Play, Square, Save, ScreenShare, Send, Ghost, Bug, MonitorIcon } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Course, Student } from "@/lib/data"
@@ -579,11 +579,12 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     
     const formData = new FormData();
     formData.append('image', frameBlob);
-    formData.append('lecture_id', lectureId);
+    formData.append('lectureId', lectureId);
+    formData.append('timestamp', new Date().toISOString());
     
     try {
       // Replace with your actual API endpoint
-      const response = await fetch('/api/face-detection', {
+      const response = await fetch('/api/process-image', {
         method: 'POST',
         body: formData,
       });
@@ -1044,6 +1045,19 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     
     return `${hours > 0 ? `${hours}h ` : ''}${minutes}m ${seconds}s`;
   };
+
+  // Return JSX for the component with enhanced slides and detection info
+  return (enPresentationDisplay = () => {
+    <div className="flex flex-col h-full">sion identifier
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4">
+        {/* Left panel - Controls */}
+        <div className="lg:col-span-2 space-y-4">
+          <Card className="h-full">
+            <CardHeader>sessionId=${sessionId}`,
+              <CardTitle className="text-lg">Controls</CardTitle>
+              <CardDescription className="text-xs">=no,menubar=no,scrollbars=yes,resizable=yes,width=1200,height=800'
+                {lectureStarted 
+                  ? `Lecture in progress: ${formatElapsedTime(elapsedSeconds)} / ${formatDuration(durationMinutes)}`
 
   // Return JSX for the component with enhanced slides and detection info
   return (
@@ -1549,6 +1563,16 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                 </Button>
               </div>
             )}
+            {/* Add this button after your existing presentation controls */}
+            {/* This would likely go near where you handle uploads or display controls */}
+            <Button 
+              onClick={openPresentationDisplay}
+              variant="outline"
+              className="flex items-center gap-2 mt-4"
+            >
+              <MonitorIcon className="h-4 w-4" /> 
+              Open on Second Screen
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -1662,4 +1686,4 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       </AlertDialog>
     </div>
   )
-} 
+}
