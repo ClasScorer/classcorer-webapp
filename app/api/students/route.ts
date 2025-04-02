@@ -66,26 +66,19 @@ export async function GET(request: NextRequest) {
       // If no courseId is provided, get all students for the current user
       console.log(`No courseId provided, getting all students for user: ${userId}`);
       
-      // When no course is specified, we still need to find students related to this user
-      whereConditions.OR = [
-        // Students enrolled in courses taught by this user
-        {
-          enrollments: {
-            some: {
-              course: {
-                instructorId: userId
-              }
+      // Get all students enrolled in courses taught by this user
+      whereConditions = {
+        enrollments: {
+          some: {
+            course: {
+              instructorId: userId
             }
           }
-        },
-        // Students directly associated with this user (if applicable)
-        {
-          professorId: userId
         }
-      ];
+      };
       
       // Log what we're doing
-      console.log("Using broader query to find all students related to current user");
+      console.log("Using query to find all students enrolled in current user's courses");
     }
 
     // Text search (name or email)

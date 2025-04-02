@@ -20,7 +20,14 @@ export default async function CoursesPage() {
     include: {
       students: {
         include: {
-          student: true
+          student: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatar: true,
+            }
+          }
         }
       },
       lectures: true,
@@ -34,6 +41,11 @@ export default async function CoursesPage() {
     ...course,
     students: course.students.map(enrollment => enrollment.student)
   }))
+
+  // Log the number of students for each course
+  transformedCourses.forEach(course => {
+    console.log(`Course ${course.name} has ${course.students.length} students`);
+  });
 
   return (
     <div className="p-8">

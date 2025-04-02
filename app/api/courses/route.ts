@@ -53,7 +53,14 @@ export async function GET() {
         },
         students: {
           include: {
-            student: true,
+            student: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                avatar: true,
+              }
+            },
           },
         },
         lectures: true,
