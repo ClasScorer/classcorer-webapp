@@ -95,25 +95,63 @@ export async function GET(
 
 // Helper functions to transform the data
 function calculateAverageAttendance(lectures: any[]) {
-  if (lectures.length === 0) return 100;
+  if (lectures.length === 0) return 0;
   
-  const totalAttendances = lectures.reduce((sum, lecture) => 
-    sum + lecture.attendances.length, 0);
-  const presentAttendances = lectures.reduce((sum, lecture) => 
-    sum + lecture.attendances.filter((a: any) => a.status === 'PRESENT').length, 0);
+  // Get unique students who have attended any lecture
+  const studentAttendances = new Map<string, { present: number; total: number }>();
   
-  return Math.round((presentAttendances / totalAttendances) * 100);
+  lectures.forEach(lecture => {
+    lecture.attendances.forEach((attendance: any) => {
+      const studentId = attendance.studentId;
+      if (!studentAttendances.has(studentId)) {
+        studentAttendances.set(studentId, { present: 0, total: 0 });
+      }
+      const stats = studentAttendances.get(studentId)!;
+      stats.total++;
+      if (attendance.status === 'PRESENT') {
+        stats.present++;
+      }
+    });
+  });
+
+  // Calculate average attendance across all students
+  if (studentAttendances.size === 0) return 0;
+  
+  const totalAttendance = Array.from(studentAttendances.values()).reduce(
+    (sum, stats) => sum + (stats.present / stats.total), 0
+  );
+  
+  return Math.min(100, Math.round((totalAttendance / studentAttendances.size) * 100));
 }
 
 function calculatePassRate(assignments: any[]) {
-  if (assignments.length === 0) return 100;
+  if (assignments.length === 0) return 0;
   
-  const totalSubmissions = assignments.reduce((sum, assignment) => 
-    sum + assignment.submissions.length, 0);
-  const passingSubmissions = assignments.reduce((sum, assignment) => 
-    sum + assignment.submissions.filter((s: any) => s.score >= 60).length, 0);
+  // Get unique students and their submission status
+  const studentScores = new Map<string, { passing: number; total: number }>();
   
-  return Math.round((passingSubmissions / totalSubmissions) * 100);
+  assignments.forEach(assignment => {
+    assignment.submissions.forEach((submission: any) => {
+      const studentId = submission.studentId;
+      if (!studentScores.has(studentId)) {
+        studentScores.set(studentId, { passing: 0, total: 0 });
+      }
+      const stats = studentScores.get(studentId)!;
+      stats.total++;
+      if (submission.score >= 60) {
+        stats.passing++;
+      }
+    });
+  });
+
+  // Calculate pass rate across all students
+  if (studentScores.size === 0) return 0;
+  
+  const totalPassRate = Array.from(studentScores.values()).reduce(
+    (sum, stats) => sum + (stats.passing / stats.total), 0
+  );
+  
+  return Math.min(100, Math.round((totalPassRate / studentScores.size) * 100));
 }
 
 function transformStudents(enrollments: any[], assignments: any[], lectures: any[]) {

@@ -77,13 +77,13 @@ async function getTotalStats() {
   ).length;
 
   // Calculate weighted averages based on student count
-  const averageAttendance = totalStudents === 0 ? 0 : Math.round(
-    students.reduce((sum, student) => sum + student.attendance, 0) / totalStudents
-  );
+  const averageAttendance = totalStudents === 0 ? 0 : Math.min(100, Math.round(
+    students.reduce((sum, student) => sum + Math.min(100, student.attendance), 0) / totalStudents
+  ));
 
-  const averagePassRate = totalStudents === 0 ? 0 : Math.round(
+  const averagePassRate = totalStudents === 0 ? 0 : Math.min(100, Math.round(
     students.reduce((sum, student) => sum + (student.average >= 60 ? 1 : 0), 0) * 100 / totalStudents
-  );
+  ));
 
   // Calculate student trend (comparing this week to previous)
   const studentTrend = totalStudents > 0 ? 'up' : 'down';
@@ -129,10 +129,10 @@ export default async function DashboardPage() {
   const courseStats = courses.map(course => {
     const courseStudents = students.filter(s => s.courseId === course.id);
     const averageAttendance = courseStudents.length > 0
-      ? Math.round(courseStudents.reduce((sum, s) => sum + s.attendance, 0) / courseStudents.length)
+      ? Math.min(100, Math.round(courseStudents.reduce((sum, s) => sum + Math.min(100, s.attendance), 0) / courseStudents.length))
       : 0;
     const averageScore = courseStudents.length > 0
-      ? Math.round(courseStudents.reduce((sum, s) => sum + s.average, 0) / courseStudents.length)
+      ? Math.min(100, Math.round(courseStudents.reduce((sum, s) => sum + Math.min(100, s.average), 0) / courseStudents.length))
       : 0;
     const atRiskCount = courseStudents.filter(s => s.average < 60 || s.attendance < 70).length;
     
@@ -140,7 +140,7 @@ export default async function DashboardPage() {
     const submissionCount = courseStudents.reduce((sum, s) => sum + (s.submissions || 0), 0);
     const totalPossibleSubmissions = courseStudents.length * 5; // Assume 5 assignments per course
     const submissionRate = totalPossibleSubmissions > 0 
-      ? Math.round((submissionCount / totalPossibleSubmissions) * 100)
+      ? Math.min(100, Math.round((submissionCount / totalPossibleSubmissions) * 100))
       : 0;
 
     return {
