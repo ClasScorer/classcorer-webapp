@@ -1,10 +1,10 @@
 "use client"
 
 import SlidesPopup from "@/app/components/slides-popup"
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 
-export default function PresentationPage() {
+function PresentationContent() {
   // Always show the slides content since this is a dedicated display page
   const [isOpen, setIsOpen] = useState(true)
   const searchParams = useSearchParams()
@@ -86,5 +86,13 @@ export default function PresentationPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function PresentationPage() {
+  return (
+    <Suspense fallback={<div className="h-screen w-screen flex items-center justify-center bg-background">Loading presentation...</div>}>
+      <PresentationContent />
+    </Suspense>
   )
 }
