@@ -29,7 +29,8 @@ import {
   ChevronRight,
   Award,
   BookOpen,
-  Users
+  Users,
+  ArrowUpDown
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import StudentDetailsDialog from './student-details-dialog'
@@ -48,6 +49,8 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
+import { toast } from "sonner"
+import { useHotkeys } from "react-hotkeys-hook"
 
 interface GradeData {
   excellent: number;
@@ -69,6 +72,9 @@ function getStatusColor(status: string) {
   }
 }
 
+type SortField = 'name' | 'email' | 'attendance' | 'status';
+type SortDirection = 'asc' | 'desc';
+
 export default function StudentsPage() {
   // State
   const [students, setStudents] = useState<Student[]>([])
@@ -81,7 +87,7 @@ export default function StudentsPage() {
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [showFilterDialog, setShowFilterDialog] = useState(false)
   const [page, setPage] = useState(1)
-  const [limit] = useState(20)
+  const [limit, setLimit] = useState(10)
   const [totalCount, setTotalCount] = useState(0)
   const totalPages = Math.ceil(totalCount / limit)
   const [userCourses, setUserCourses] = useState<any[]>([])
@@ -103,6 +109,13 @@ export default function StudentsPage() {
     good: 0,
     needsHelp: 0
   })
+
+  // Add page size options
+  const pageSizeOptions = [10, 20, 50, 100]
+
+  // Add these to the component state
+  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   // Fetch user's courses
   const fetchUserCourses = useCallback(async () => {
@@ -127,102 +140,64 @@ export default function StudentsPage() {
     fetchUserCourses();
   }, [fetchUserCourses]);
 
-  // Debounced search function
-  const debouncedSearch = useCallback(
-    debounce((value: string) => {
+  // Memoize the fetchStudents function
+  const fetchStudents = useCallback(async () => {
+    if (!userCourses.length) return;
+    
+    setIsLoading(true);
+    try {
+      const queryParams = new URLSearchParams();
+      
+      if (filters.courseId && filters.courseId !== '_all') {
+        queryParams.append('courseId', filters.courseId);
+      }
+      
+      if (debouncedSearchQuery) {
+        queryParams.append('search', debouncedSearchQuery);
+      }
+      
+      queryParams.append('page', page.toString());
+      queryParams.append('limit', limit.toString());
+      
+      if (filters.minGrade > 0) queryParams.append('minGrade', filters.minGrade.toString());
+      if (filters.maxGrade < 100) queryParams.append('maxGrade', filters.maxGrade.toString());
+      if (filters.minAttendance > 0) queryParams.append('minAttendance', filters.minAttendance.toString());
+      if (filters.engagementLevel && filters.engagementLevel !== '_any') queryParams.append('engagementLevel', filters.engagementLevel);
+      if (filters.status && filters.status !== '_any') queryParams.append('status', filters.status);
+      
+      const response = await fetch(`/api/students?${queryParams.toString()}`);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch students');
+      }
+      
+      setStudents(data.students);
+      setTotalCount(data.totalCount);
+      calculateGradeStats(data.students);
+    } catch (error) {
+      console.error('Error fetching students:', error);
+      toast.error("Failed to fetch students. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [userCourses.length, filters, debouncedSearchQuery, page, limit]);
+
+  // Optimize the debounced search
+  const debouncedSearch = useMemo(
+    () => debounce((value: string) => {
       setDebouncedSearchQuery(value);
-      setPage(1); // Reset to first page on new search
+      setPage(1);
     }, 500),
     []
   );
 
-  // Handle search input change
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setSearchQuery(value);
-    debouncedSearch(value);
-  };
-
-  // Fetch students with pagination, filters, and course restriction
-  const fetchStudents = useCallback(async () => {
-    // Don't fetch students until we have the course list
-    if (courseLoading) return;
-    
-    // If no courses available, don't fetch students
-    if (userCourses.length === 0) {
-      setStudents([]);
-      setTotalCount(0);
-      setIsLoading(false);
-      return;
-    }
-
-    const isInitialLoad = page === 1 && !isLoadingMore;
-    
-    if (isInitialLoad) {
-      setIsLoading(true);
-    } else {
-      setIsLoadingMore(true);
-    }
-
-    try {
-      // Build query params
-      const params = new URLSearchParams();
-      params.append('include', 'all');
-      params.append('page', page.toString());
-      params.append('limit', limit.toString());
-      
-      if (debouncedSearchQuery) {
-        params.append('search', debouncedSearchQuery);
-      }
-      
-      // Use selected course filter or restrict to user's courses
-      if (filters.courseId && filters.courseId !== '_all') {
-        params.append('courseId', filters.courseId);
-      } else if (userCourses.length > 0) {
-        // If multiple courses, use the first one by default or implement multi-course fetching
-        // This is a simplification - ideally you'd want to handle multiple courses
-        params.append('courseId', userCourses[0].id);
-      }
-      
-      if (filters.minGrade > 0) {
-        params.append('minGrade', filters.minGrade.toString());
-      }
-      
-      if (filters.maxGrade < 100) {
-        params.append('maxGrade', filters.maxGrade.toString());
-      }
-      
-      if (filters.minAttendance > 0) {
-        params.append('minAttendance', filters.minAttendance.toString());
-      }
-      
-      if (filters.engagementLevel && filters.engagementLevel !== '_any') {
-        params.append('engagementLevel', filters.engagementLevel);
-      }
-      
-      if (filters.status && filters.status !== '_any') {
-        params.append('status', filters.status);
-      }
-
-      const response = await fetch(`/api/students?${params.toString()}`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch students');
-      }
-      
-      const data = await response.json();
-      
-      setStudents(data.students);
-      setTotalCount(data.total);
-      calculateGradeStats(data.students);
-      
-    } catch (error) {
-      console.error('Error fetching students:', error);
-    } finally {
-      setIsLoading(false);
-      setIsLoadingMore(false);
-    }
-  }, [page, limit, debouncedSearchQuery, filters, userCourses, courseLoading, isLoadingMore]);
+  // Effect to fetch students only when necessary dependencies change
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchStudents();
+    return () => controller.abort();
+  }, [fetchStudents]);
 
   // Calculate grade stats
   const calculateGradeStats = (students: any[]) => {
@@ -248,11 +223,6 @@ export default function StudentsPage() {
     setGradeData({ excellent, good, needsHelp });
   };
 
-  // Effect to fetch students when relevant dependencies change
-  useEffect(() => {
-    fetchStudents();
-  }, [fetchStudents]);
-
   // Handle student selection
   const handleStudentClick = (student: Student) => {
     setSelectedStudent(student);
@@ -266,18 +236,32 @@ export default function StudentsPage() {
     setShowFilterDialog(false);
   };
 
-  // Handle pagination
-  const goToNextPage = () => {
-    if (page < totalPages) {
-      setPage(page + 1);
-    }
-  };
+  // Add keyboard navigation
+  useHotkeys('left', () => {
+    if (page > 1 && !isLoading) goToPrevPage();
+  });
+  useHotkeys('right', () => {
+    if (page < totalPages && !isLoading) goToNextPage();
+  });
 
-  const goToPrevPage = () => {
-    if (page > 1) {
-      setPage(page - 1);
+  // Optimize pagination functions
+  const goToNextPage = useCallback(() => {
+    if (page < totalPages && !isLoading) {
+      setPage(prev => prev + 1);
     }
-  };
+  }, [page, totalPages, isLoading]);
+
+  const goToPrevPage = useCallback(() => {
+    if (page > 1 && !isLoading) {
+      setPage(prev => prev - 1);
+    }
+  }, [page, isLoading]);
+
+  const goToPage = useCallback((newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages && !isLoading) {
+      setPage(newPage);
+    }
+  }, [totalPages, isLoading]);
 
   // Memoized functions for student status determination
   const getStudentStatus = useCallback((student: any) => {
@@ -304,9 +288,47 @@ export default function StudentsPage() {
     return Math.round((presentCount / student.attendances.length) * 100);
   }, []);
 
-  // Row renderer for virtualized list
-  const rowRenderer = ({ index, key, style }: { index: number, key: string, style: React.CSSProperties }) => {
-    if (isLoading && students.length === 0) {
+  // Add this function after the existing state declarations
+  const handleSort = useCallback((field: SortField) => {
+    setSortField(field);
+    setSortDirection(current => 
+      current === 'asc' && sortField === field ? 'desc' : 'asc'
+    );
+  }, [sortField]);
+
+  // Add this memoized sorting function
+  const sortedStudents = useMemo(() => {
+    return [...students].sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortField) {
+        case 'name':
+          comparison = a.name.localeCompare(b.name);
+          break;
+        case 'email':
+          comparison = a.email.localeCompare(b.email);
+          break;
+        case 'attendance':
+          const attendanceA = getAttendanceRate(a);
+          const attendanceB = getAttendanceRate(b);
+          comparison = attendanceA - attendanceB;
+          break;
+        case 'status':
+          const statusA = getStudentStatus(a);
+          const statusB = getStudentStatus(b);
+          comparison = statusA.localeCompare(statusB);
+          break;
+        default:
+          comparison = 0;
+      }
+      
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [students, sortField, sortDirection, getAttendanceRate, getStudentStatus]);
+
+  // Memoize the row renderer function
+  const rowRenderer = useCallback(({ index, key, style }: { index: number, key: string, style: React.CSSProperties }) => {
+    if (isLoading && sortedStudents.length === 0) {
       return (
         <div key={key} style={style} className="flex items-center p-4 border-b">
           <div className="w-[80px]">
@@ -331,7 +353,7 @@ export default function StudentsPage() {
       );
     }
     
-    const student = students[index];
+    const student = sortedStudents[index];
     if (!student) return null;
     
     const status = getStudentStatus(student);
@@ -341,32 +363,37 @@ export default function StudentsPage() {
       <div
         key={key}
         style={style}
-        className="flex items-center p-4 border-b cursor-pointer hover:bg-muted/50"
+        className="flex items-center p-4 border-b cursor-pointer hover:bg-muted/50 transition-colors"
         onClick={() => handleStudentClick(student)}
       >
-        <div className="w-[80px]">
+        <div className="w-[80px] flex items-center justify-center">
           <Avatar className="h-9 w-9">
             <AvatarImage src={`https://avatar.vercel.sh/${student.id}`} alt={student.name} />
             <AvatarFallback>{student.name.substring(0, 2).toUpperCase()}</AvatarFallback>
           </Avatar>
         </div>
-        <div className="flex-1 font-medium">{student.name}</div>
-        <div className="flex-1">{student.email}</div>
-        <div className="flex-1">{attendanceRate}%</div>
-        <div className="flex-1">
+        <div className="flex-1 font-medium truncate pr-4">{student.name}</div>
+        <div className="flex-1 truncate pr-4">{student.email}</div>
+        <div className="flex-1 pr-4">{attendanceRate}%</div>
+        <div className="flex-1 pr-4">
           <Badge variant="outline" className={cn("py-1", getStatusColor(status))}>
             {status}
           </Badge>
         </div>
-        <div className="text-right">
-          <Button variant="ghost" size="icon">
+        <div className="w-[60px] flex items-center justify-end">
+          <Button variant="ghost" size="icon" className="h-8 w-8">
             <MoreHorizontal className="h-4 w-4" />
             <span className="sr-only">More</span>
           </Button>
         </div>
       </div>
     );
-  };
+  }, [isLoading, sortedStudents, getStudentStatus, getAttendanceRate, handleStudentClick]);
+
+  // Optimize the virtualized list
+  const listHeight = useMemo(() => {
+    return Math.min(600, Math.max(200, sortedStudents.length * 65));
+  }, [sortedStudents.length]);
 
   return (
     <div className="flex-1 space-y-8 p-4 md:p-8 pt-6">
@@ -468,7 +495,11 @@ export default function StudentsPage() {
                 placeholder="Search students..."
                 className="md:w-[300px]"
                 value={searchQuery}
-                onChange={handleSearchChange}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSearchQuery(value);
+                  debouncedSearch(value);
+                }}
               />
             </div>
           </div>
@@ -481,20 +512,72 @@ export default function StudentsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border">
+              <div className="rounded-md border overflow-hidden">
                 {/* Table headers */}
-                <div className="bg-muted/50 px-4 py-3 flex items-center font-medium text-sm">
+                <div className="bg-muted/50 px-4 py-3 flex items-center font-medium text-sm sticky top-0 z-10">
                   <div className="w-[80px]"></div>
-                  <div className="flex-1">Name</div>
-                  <div className="flex-1">Email</div>
-                  <div className="flex-1">Attendance</div>
-                  <div className="flex-1">Status</div>
+                  <div 
+                    className="flex-1 flex items-center gap-1 cursor-pointer hover:text-primary transition-colors"
+                    onClick={() => handleSort('name')}
+                  >
+                    Name
+                    {sortField === 'name' && (
+                      <ArrowUpDown className="h-4 w-4" />
+                    )}
+                    {sortField === 'name' && (
+                      <span className="text-xs">
+                        {sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </div>
+                  <div 
+                    className="flex-1 flex items-center gap-1 cursor-pointer hover:text-primary transition-colors"
+                    onClick={() => handleSort('email')}
+                  >
+                    Email
+                    {sortField === 'email' && (
+                      <ArrowUpDown className="h-4 w-4" />
+                    )}
+                    {sortField === 'email' && (
+                      <span className="text-xs">
+                        {sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </div>
+                  <div 
+                    className="flex-1 flex items-center gap-1 cursor-pointer hover:text-primary transition-colors"
+                    onClick={() => handleSort('attendance')}
+                  >
+                    Attendance
+                    {sortField === 'attendance' && (
+                      <ArrowUpDown className="h-4 w-4" />
+                    )}
+                    {sortField === 'attendance' && (
+                      <span className="text-xs">
+                        {sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </div>
+                  <div 
+                    className="flex-1 flex items-center gap-1 cursor-pointer hover:text-primary transition-colors"
+                    onClick={() => handleSort('status')}
+                  >
+                    Status
+                    {sortField === 'status' && (
+                      <ArrowUpDown className="h-4 w-4" />
+                    )}
+                    {sortField === 'status' && (
+                      <span className="text-xs">
+                        {sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </div>
                   <div className="w-[60px]"></div>
                 </div>
                 
                 {/* Virtualized student list */}
                 <div className="relative">
-                  {isLoading && students.length === 0 ? (
+                  {isLoading && sortedStudents.length === 0 ? (
                     // Skeleton loading state
                     Array.from({ length: 5 }).map((_, i) => (
                       <div key={i} className="flex items-center p-4 border-b">
@@ -518,7 +601,7 @@ export default function StudentsPage() {
                         </div>
                       </div>
                     ))
-                  ) : students.length === 0 ? (
+                  ) : sortedStudents.length === 0 ? (
                     <div className="p-4 text-center text-muted-foreground">
                       No students found.
                     </div>
@@ -529,13 +612,18 @@ export default function StudentsPage() {
                           {({ width }) => (
                             <List
                               autoHeight
-                              height={height || 400}
+                              height={listHeight}
                               scrollTop={scrollTop}
                               width={width}
                               rowHeight={65}
-                              rowCount={students.length}
+                              rowCount={sortedStudents.length}
                               rowRenderer={rowRenderer}
-                              overscanRowCount={5}
+                              overscanRowCount={3}
+                              noRowsRenderer={() => (
+                                <div className="p-4 text-center text-muted-foreground">
+                                  No students found.
+                                </div>
+                              )}
                             />
                           )}
                         </AutoSizer>
@@ -546,79 +634,133 @@ export default function StudentsPage() {
               </div>
               
               <div className="flex items-center justify-between mt-4">
-                <p className="text-sm text-muted-foreground">
-                  Showing {students.length} of {totalCount} students
-                </p>
-                <Pagination>
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationPrevious 
-                        onClick={goToPrevPage} 
-                        className={cn(page <= 1 || isLoading ? "pointer-events-none opacity-50" : "")}
-                      />
-                    </PaginationItem>
-                    
-                    {/* First page */}
-                    {page > 2 && (
+                <div className="flex items-center gap-4">
+                  <p className="text-sm text-muted-foreground">
+                    Showing {sortedStudents.length} of {totalCount} students
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Show:</span>
+                    <select
+                      value={limit}
+                      onChange={(e) => {
+                        setLimit(Number(e.target.value));
+                        setPage(1);
+                      }}
+                      className="h-8 w-[70px] rounded-md border border-input bg-background px-2 py-1 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                      disabled={isLoading}
+                    >
+                      {pageSizeOptions.map((size) => (
+                        <option key={size} value={size}>
+                          {size}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Pagination>
+                    <PaginationContent>
                       <PaginationItem>
-                        <PaginationLink onClick={() => setPage(1)}>1</PaginationLink>
+                        <PaginationPrevious 
+                          onClick={goToPrevPage} 
+                          className={cn(
+                            "transition-opacity",
+                            (page <= 1 || isLoading) ? "pointer-events-none opacity-50" : "hover:opacity-80"
+                          )}
+                          aria-disabled={page <= 1 || isLoading}
+                        />
                       </PaginationItem>
-                    )}
-                    
-                    {/* Ellipsis for many pages */}
-                    {page > 3 && (
+                      
+                      {/* First page */}
+                      {page > 3 && (
+                        <>
+                          <PaginationItem>
+                            <PaginationLink 
+                              onClick={() => goToPage(1)}
+                              className="transition-colors hover:bg-muted"
+                            >
+                              1
+                            </PaginationLink>
+                          </PaginationItem>
+                          {page > 4 && (
+                            <PaginationItem>
+                              <PaginationEllipsis />
+                            </PaginationItem>
+                          )}
+                        </>
+                      )}
+                      
+                      {/* Pages around current page */}
+                      {Array.from({ length: 5 }, (_, i) => page - 2 + i)
+                        .filter(p => p > 0 && p <= totalPages)
+                        .map(p => (
+                          <PaginationItem key={p}>
+                            <PaginationLink 
+                              onClick={() => goToPage(p)}
+                              isActive={p === page}
+                              className={cn(
+                                "min-w-[2.5rem] text-center transition-colors",
+                                p === page 
+                                  ? "bg-primary text-primary-foreground hover:bg-primary/90" 
+                                  : "hover:bg-muted"
+                              )}
+                            >
+                              {p}
+                            </PaginationLink>
+                          </PaginationItem>
+                      ))}
+                      
+                      {/* Last page */}
+                      {page < totalPages - 2 && (
+                        <>
+                          {page < totalPages - 3 && (
+                            <PaginationItem>
+                              <PaginationEllipsis />
+                            </PaginationItem>
+                          )}
+                          <PaginationItem>
+                            <PaginationLink 
+                              onClick={() => goToPage(totalPages)}
+                              className="transition-colors hover:bg-muted"
+                            >
+                              {totalPages}
+                            </PaginationLink>
+                          </PaginationItem>
+                        </>
+                      )}
+                      
                       <PaginationItem>
-                        <PaginationEllipsis />
+                        <PaginationNext 
+                          onClick={goToNextPage} 
+                          className={cn(
+                            "transition-opacity",
+                            (page >= totalPages || isLoading) ? "pointer-events-none opacity-50" : "hover:opacity-80"
+                          )}
+                          aria-disabled={page >= totalPages || isLoading}
+                        />
                       </PaginationItem>
-                    )}
-                    
-                    {/* Previous page */}
-                    {page > 1 && (
-                      <PaginationItem>
-                        <PaginationLink onClick={() => setPage(page - 1)}>
-                          {page - 1}
-                        </PaginationLink>
-                      </PaginationItem>
-                    )}
-                    
-                    {/* Current page */}
-                    <PaginationItem>
-                      <PaginationLink isActive>{page}</PaginationLink>
-                    </PaginationItem>
-                    
-                    {/* Next page */}
-                    {page < totalPages && (
-                      <PaginationItem>
-                        <PaginationLink onClick={() => setPage(page + 1)}>
-                          {page + 1}
-                        </PaginationLink>
-                      </PaginationItem>
-                    )}
-                    
-                    {/* Ellipsis for many pages */}
-                    {page < totalPages - 2 && (
-                      <PaginationItem>
-                        <PaginationEllipsis />
-                      </PaginationItem>
-                    )}
-                    
-                    {/* Last page */}
-                    {page < totalPages - 1 && totalPages > 1 && (
-                      <PaginationItem>
-                        <PaginationLink onClick={() => setPage(totalPages)}>
-                          {totalPages}
-                        </PaginationLink>
-                      </PaginationItem>
-                    )}
-                    
-                    <PaginationItem>
-                      <PaginationNext 
-                        onClick={goToNextPage} 
-                        className={cn(page >= totalPages || isLoading ? "pointer-events-none opacity-50" : "")}
-                      />
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
+                    </PaginationContent>
+                  </Pagination>
+                  
+                  {/* Page input field */}
+                  <div className="flex items-center gap-2 ml-2">
+                    <span className="text-sm text-muted-foreground">Go to:</span>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={totalPages}
+                      value={page}
+                      onChange={(e) => {
+                        const newPage = parseInt(e.target.value);
+                        if (!isNaN(newPage)) {
+                          goToPage(newPage);
+                        }
+                      }}
+                      className="w-16 h-8 text-center"
+                      disabled={isLoading}
+                    />
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
