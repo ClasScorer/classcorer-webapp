@@ -14,88 +14,47 @@ const courseSchema = z.object({
 
 export async function GET() {
   try {
-    // Check authentication
-    const session = await getServerSession(authOptions)
+    const session = await getServerSession(authOptions);
     
-    // Enhanced logging for auth debugging
-    console.log('Course API: Auth session check:', { 
-      hasSession: !!session,
-      hasUser: !!session?.user,
-      userId: session?.user?.id || 'not available' 
-    });
-    
-    if (!session) {
-      console.error('Course API: Authentication failed: No session found');
-      return NextResponse.json({ error: 'Unauthorized: No valid session' }, { status: 401 })
-    }
-    
-    if (!session.user) {
-      console.error('Course API: Authentication failed: No valid session user found');
-      return NextResponse.json({ error: 'Unauthorized: No valid session' }, { status: 401 })
-    }
-    
-    if (!session.user.id) {
-      console.error('Course API: Authentication issue: User ID missing in session');
-      return NextResponse.json({ error: 'Unauthorized: User ID missing' }, { status: 401 })
+    if (!session?.user) {
+      return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    // Get courses for the current instructor
+    // Get all courses with instructor data
     const courses = await prisma.course.findMany({
-      where: { 
-        instructorId: session.user.id 
+      where: {
+        instructorId: session.user.id
       },
       include: {
         instructor: {
           select: {
+            id: true,
             name: true,
-            email: true,
-          },
+            email: true
+          }
         },
         students: {
           include: {
-            student: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                avatar: true,
-              }
-            },
-          },
+            student: true
+          }
         },
-        lectures: true,
-        assignments: true,
-        announcements: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    })
-
-    console.log(`Found ${courses.length} courses for instructor ${session.user.id}`);
-
-    // Transform the response to include students directly
-    const transformedCourses = courses.map(course => {
-      // Add logging for each course's students
-      console.log(`Course ${course.name} (${course.id}) has ${course.students.length} enrollments`);
-      
-      const transformedCourse = {
-        ...course,
-        students: course.students.map(enrollment => enrollment.student)
-      };
-      
-      console.log(`Transformed course ${transformedCourse.name} now has ${transformedCourse.students.length} direct students`);
-      
-      return transformedCourse;
+        assignments: {
+          include: {
+            submissions: true
+          }
+        },
+        lectures: {
+          include: {
+            attendances: true
+          }
+        }
+      }
     });
 
-    return NextResponse.json(transformedCourses, {
-      headers: {
-        'Cache-Control': 'no-store, max-age=0',
-        'Content-Type': 'application/json'
-      }
-    })
+    return NextResponse.json(courses);
   } catch (error) {
-    console.error('[COURSES_GET]', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Error fetching courses:', error);
+    return new NextResponse('Internal Server Error', { status: 500 });
   }
 }
 
