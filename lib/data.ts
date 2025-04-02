@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma"
+import { prisma } from "./prisma"
 
 // Data types based on the normalized schema
 export type UserRole = 'PROFESSOR' | 'TEACHING_ASSISTANT' | 'ADMIN';
@@ -333,7 +333,7 @@ export async function loadStudents(): Promise<Student[]> {
 
 export async function loadCourses(): Promise<Course[]> {
   try {
-    // Get all courses with instructor data
+    // Get all courses with instructor data directly from Prisma
     const courses = await prisma.course.findMany({
       include: {
         instructor: {
@@ -342,241 +342,199 @@ export async function loadCourses(): Promise<Course[]> {
             name: true,
             email: true
           }
+        },
+        students: {
+          include: {
+            student: true
+          }
+        },
+        assignments: {
+          include: {
+            submissions: true
+          }
+        },
+        lectures: {
+          include: {
+            attendances: true
+          }
         }
       }
     });
 
-    // For each course, get enrollments, assignments, and lectures
-    const enrichedCourses = await Promise.all(
-      courses.map(async (course) => {
-        // Get enrollments for this course
-        const enrollments = await prisma.studentEnrollment.findMany({
-          where: {
-            courseId: course.id
-          },
-          include: {
-            student: true
-          }
-        });
-
-        // Get assignments for this course
-        const assignments = await prisma.assignment.findMany({
-          where: {
-            courseId: course.id
-          },
-          include: {
-            submissions: true
-          }
-        });
-
-        // Get lectures for this course
-        const lectures = await prisma.lecture.findMany({
-          where: {
-            courseId: course.id
-          },
-          include: {
-            attendances: true
-          }
-        });
-
-        // Calculate metrics
-        const totalStudents = enrollments.length;
+    // Transform the courses data to match our Course interface
+    return courses.map((course: any) => {
+      // Calculate metrics
+      const totalStudents = course.students?.length || 0;
+      
+      // Calculate week number based on start date
+      const week = course.startDate 
+        ? Math.ceil(Math.abs(new Date().getTime() - new Date(course.startDate).getTime()) / (7 * 24 * 60 * 60 * 1000))
+        : 1;
+      
+      // Calculate progress based on start and end dates
+      let progress = 0;
+      if (course.startDate && course.endDate) {
+        const start = new Date(course.startDate).getTime();
+        const end = new Date(course.endDate).getTime();
+        const now = new Date().getTime();
         
-        // Calculate week number based on start date
-        const week = course.startDate 
-          ? Math.ceil(Math.abs(new Date().getTime() - new Date(course.startDate).getTime()) / (7 * 24 * 60 * 60 * 1000))
-          : 1;
-        
-        // Calculate progress based on start and end dates
-        let progress = 0;
-        if (course.startDate && course.endDate) {
-          const start = new Date(course.startDate).getTime();
-          const end = new Date(course.endDate).getTime();
-          const now = new Date().getTime();
-          
-          if (now <= start) progress = 0;
-          else if (now >= end) progress = 100;
-          else {
-            const totalDuration = end - start;
-            const elapsed = now - start;
-            progress = Math.round((elapsed / totalDuration) * 100);
-          }
+        if (now <= start) progress = 0;
+        else if (now >= end) progress = 100;
+        else {
+          const totalDuration = end - start;
+          const elapsed = now - start;
+          progress = Math.round((elapsed / totalDuration) * 100);
         }
-        
-        // Calculate average scores and attendance
-        let totalScore = 0;
-        let totalAssignments = 0;
-        let totalAttendances = 0;
-        let presentAttendances = 0;
-        let atRiskCount = 0;
-        
-        assignments.forEach(assignment => {
-          assignment.submissions.forEach(submission => {
-            if (submission.score !== null && submission.score !== undefined) {
-              totalScore += submission.score;
-              totalAssignments++;
-            }
-          });
-        });
-        
-        lectures.forEach(lecture => {
-          lecture.attendances.forEach(attendance => {
-            totalAttendances++;
-            if (attendance.status === 'PRESENT') {
-              presentAttendances++;
-            }
-          });
-        });
-        
-        const average = totalAssignments > 0 ? Math.round(totalScore / totalAssignments) : 0;
-        const attendance = totalAttendances > 0 ? Math.round((presentAttendances / totalAttendances) * 100) : 100;
-        
-        // Calculate at-risk students
-        enrollments.forEach(enrollment => {
-          const studentSubmissions = assignments.flatMap(a => 
-            a.submissions.filter(s => s.studentId === enrollment.studentId)
-          );
-          
-          const studentTotalScore = studentSubmissions.reduce((sum, s) => 
-            sum + (s.score || 0), 0
-          );
-          
-          const studentAverage = studentSubmissions.length > 0 
-            ? studentTotalScore / studentSubmissions.length 
-            : 0;
-          
-          if (studentAverage < 60) {
-            atRiskCount++;
+      }
+      
+      // Calculate average scores and attendance
+      let totalScore = 0;
+      let totalAssignments = 0;
+      let totalAttendances = 0;
+      let presentAttendances = 0;
+      
+      // Process assignments and submissions
+      course.assignments?.forEach((assignment: any) => {
+        assignment.submissions?.forEach((submission: any) => {
+          if (submission.score !== null && submission.score !== undefined) {
+            totalScore += submission.score;
+            totalAssignments++;
           }
         });
+      });
+      
+      // Process lectures and attendances
+      course.lectures?.forEach((lecture: any) => {
+        lecture.attendances?.forEach((attendance: any) => {
+          totalAttendances++;
+          if (attendance.status === 'PRESENT') {
+            presentAttendances++;
+          }
+        });
+      });
+      
+      // Calculate averages
+      const averageScore = totalAssignments > 0 ? totalScore / totalAssignments : 0;
+      const attendanceRate = totalAttendances > 0 ? (presentAttendances / totalAttendances) * 100 : 0;
+      
+      // Transform students data with actual metrics
+      const students = course.students?.map((enrollment: any) => {
+        const student = enrollment.student;
         
-        // Calculate pass rate
-        const passRate = totalStudents > 0 
-          ? Math.round(((totalStudents - atRiskCount) / totalStudents) * 100) 
+        // Get student's submissions for this course
+        const studentSubmissions = course.assignments?.flatMap((a: any) => 
+          a.submissions?.filter((s: any) => s.studentId === student.id)
+        ) || [];
+        
+        // Get student's attendances for this course
+        const studentAttendances = course.lectures?.flatMap((l: any) => 
+          l.attendances?.filter((a: any) => a.studentId === student.id)
+        ) || [];
+        
+        // Calculate student metrics
+        const studentTotalScore = studentSubmissions.reduce((sum: number, s: any) => 
+          sum + (s.score || 0), 0);
+        
+        const studentAverage = studentSubmissions.length > 0 
+          ? studentTotalScore / studentSubmissions.length 
+          : 0;
+        
+        const studentAttendanceCount = studentAttendances.length;
+        const studentPresentCount = studentAttendances.filter((a: any) => a.status === 'PRESENT').length;
+        const studentAttendanceRate = studentAttendanceCount > 0 
+          ? Math.round((studentPresentCount / studentAttendanceCount) * 100)
           : 100;
         
-        // Build student list
-        const students = enrollments.map(enrollment => {
-          const student = enrollment.student;
-          
-          // Get student submissions for this course
-          const studentSubmissions = assignments.flatMap(a => 
-            a.submissions.filter(s => s.studentId === student.id)
-          );
-          
-          // Get student attendances for this course
-          const studentAttendances = lectures.flatMap(l => 
-            l.attendances.filter(a => a.studentId === student.id)
-          );
-          
-          const studentTotalScore = studentSubmissions.reduce((sum, s) => 
-            sum + (s.score || 0), 0
-          );
-          
-          const studentAverage = studentSubmissions.length > 0 
-            ? studentTotalScore / studentSubmissions.length 
-            : 0;
-          
-          const studentAttendanceCount = studentAttendances.length;
-          const studentPresentCount = studentAttendances.filter(a => a.status === 'PRESENT').length;
-          const studentAttendanceRate = studentAttendanceCount > 0 
-            ? Math.round((studentPresentCount / studentAttendanceCount) * 100)
-            : 100;
-          
-          // Determine grade based on average
-          let grade = 'F';
-          if (studentAverage >= 90) grade = 'A';
-          else if (studentAverage >= 80) grade = 'B';
-          else if (studentAverage >= 70) grade = 'C';
-          else if (studentAverage >= 60) grade = 'D';
-          
-          // Calculate trend (up or down) based on recent submissions
-          const sortedSubmissions = [...studentSubmissions].sort((a, b) => 
-            new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
-          );
-          
-          const recentSubmissions = sortedSubmissions.slice(0, 3);
-          const olderSubmissions = sortedSubmissions.slice(3, 6);
-          
-          const recentAvg = recentSubmissions.length > 0
-            ? recentSubmissions.reduce((sum, s) => sum + (s.score || 0), 0) / recentSubmissions.length
-            : 0;
-            
-          const olderAvg = olderSubmissions.length > 0
-            ? olderSubmissions.reduce((sum, s) => sum + (s.score || 0), 0) / olderSubmissions.length
-            : 0;
-          
-          const trend = recentSubmissions.length > 0 && olderSubmissions.length > 0
-            ? recentAvg >= olderAvg ? 'up' : 'down'
-            : 'up';
-          
-          // Calculate streak based on consecutive attendances
-          const streak = calculateStreak(studentAttendances);
-          
-          // Most recent submission date
-          const lastSubmission = sortedSubmissions.length > 0
-            ? sortedSubmissions[0].submittedAt
-            : undefined;
-          
-          return {
-            id: student.id,
-            name: student.name,
-            email: student.email,
-            avatar: student.avatar || '/avatars/default.png',
-            score: Math.round(studentTotalScore),
-            level: calculateLevel(Math.round(studentTotalScore)),
-            average: Math.round(studentAverage),
-            attendance: studentAttendanceRate,
-            submissions: studentSubmissions.length,
-            lastSubmission,
-            status: studentAverage < 60 ? 'At Risk' : 'Active',
-            trend,
-            badges: [], // Will be populated separately
-            progress: Math.min(Math.round((studentSubmissions.length / Math.max(assignments.length, 1)) * 100), 100),
-            streak,
-            grade,
-            courseId: course.id,
-            course: {
-              name: course.name,
-              code: course.code
-            }
-          };
-        });
+        // Determine grade based on average
+        let grade = 'F';
+        if (studentAverage >= 90) grade = 'A';
+        else if (studentAverage >= 80) grade = 'B';
+        else if (studentAverage >= 70) grade = 'C';
+        else if (studentAverage >= 60) grade = 'D';
         
-        // Determine course status based on dates
-        let status = 'Active';
-        const now = new Date();
+        // Calculate trend (up or down) based on recent submissions
+        const sortedSubmissions = [...studentSubmissions].sort((a: any, b: any) => 
+          new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+        );
         
-        if (course.startDate && new Date(course.startDate) > now) {
-          status = 'Upcoming';
-        } else if (course.endDate && new Date(course.endDate) < now) {
-          status = 'Completed';
-        }
+        const recentSubmissions = sortedSubmissions.slice(0, 3);
+        const olderSubmissions = sortedSubmissions.slice(3, 6);
+        
+        const recentAvg = recentSubmissions.length > 0
+          ? recentSubmissions.reduce((sum: number, s: any) => sum + (s.score || 0), 0) / recentSubmissions.length
+          : 0;
+          
+        const olderAvg = olderSubmissions.length > 0
+          ? olderSubmissions.reduce((sum: number, s: any) => sum + (s.score || 0), 0) / olderSubmissions.length
+          : 0;
+        
+        const trend = recentSubmissions.length > 0 && olderSubmissions.length > 0
+          ? recentAvg >= olderAvg ? 'up' : 'down'
+          : 'up';
+        
+        // Calculate streak based on consecutive attendances
+        const streak = calculateStreak(studentAttendances);
+        
+        // Calculate progress based on assignments completed
+        const progress = Math.min(
+          Math.round((studentSubmissions.length / Math.max(course.assignments?.length || 1, 1)) * 100),
+          100
+        );
         
         return {
-          id: course.id,
-          name: course.name,
-          code: course.code,
-          description: course.description || '',
-          instructor: course.instructor,
-          startDate: course.startDate,
-          endDate: course.endDate,
-          credits: course.credits,
-          status,
-          week,
+          id: student.id,
+          name: student.name,
+          email: student.email,
+          avatar: student.avatar || `/avatars/${Math.floor(Math.random() * 5) + 1}.png`,
+          score: Math.round(studentTotalScore),
+          level: calculateLevel(Math.round(studentTotalScore)),
+          average: Math.round(studentAverage),
+          attendance: studentAttendanceRate,
+          submissions: studentSubmissions.length,
+          lastSubmission: sortedSubmissions.length > 0 ? sortedSubmissions[0].submittedAt : undefined,
+          status: studentAverage < 60 ? 'At Risk' : 'Active',
+          trend,
+          badges: [], // Will be populated separately
           progress,
-          average,
-          attendance,
-          passRate,
-          classAverage: average,
-          totalStudents,
-          atRiskCount,
-          students
+          streak,
+          grade,
+          courseId: course.id,
+          course: {
+            name: course.name,
+            code: course.code
+          }
         };
-      })
-    );
-    
-    return enrichedCourses;
+      }) || [];
+
+      // Calculate at-risk count based on actual student data
+      const atRiskCount = students.filter(s => s.status === 'At Risk').length;
+      
+      // Calculate pass rate based on actual student data
+      const passRate = totalStudents > 0 
+        ? Math.round((students.filter(s => s.average >= 60).length / totalStudents) * 100)
+        : 0;
+
+      return {
+        id: course.id,
+        name: course.name,
+        code: course.code,
+        description: course.description,
+        instructor: course.instructor,
+        startDate: course.startDate,
+        endDate: course.endDate,
+        credits: course.credits,
+        status: progress === 100 ? 'Completed' : progress > 0 ? 'In Progress' : 'Not Started',
+        week,
+        progress,
+        average: Math.round(averageScore),
+        attendance: Math.round(attendanceRate),
+        passRate,
+        classAverage: Math.round(averageScore),
+        totalStudents,
+        atRiskCount,
+        students
+      };
+    });
   } catch (error) {
     console.error("Error loading courses:", error);
     return [];
@@ -706,12 +664,28 @@ export async function getStudentsByCourse(courseId: string): Promise<Student[]> 
 
 export async function getCourseById(id: string): Promise<Course | null> {
   try {
-    const courses = await fetchCourses();
-    const course = courses.find((course: Course) => course.id === id) || null;
-    if (course) {
-      return transformCourseData(course);
+    const baseUrl = getBaseUrl();
+    const res = await fetch(`${baseUrl}/api/courses/${id}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store'
+    });
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        return null;
+      }
+      const errorData = await res.json().catch(() => ({}));
+      const errorMessage = errorData.error || `Failed to fetch course: ${res.status} ${res.statusText}`;
+      console.error(errorMessage);
+      throw new Error(errorMessage);
     }
-    return null;
+
+    const course = await res.json();
+    return transformCourseData(course);
   } catch (error) {
     console.error("Error in getCourseById:", error);
     throw new Error(`Failed to get course: ${error instanceof Error ? error.message : String(error)}`);

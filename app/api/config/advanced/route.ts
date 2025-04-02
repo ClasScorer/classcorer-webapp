@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
-import { authOptions } from "@/app/lib/auth"
-import { prisma } from "@/app/lib/prisma"
+import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/prisma"
 
 export async function GET() {
   try {
@@ -19,16 +19,9 @@ export async function GET() {
       const defaultConfig = await prisma.advancedConfig.create({
         data: {
           userId: session.user.id,
-          enableDeadzones: false,
-          enableCustomScoring: false,
-          customScoringRules: {},
-          enableAnalytics: true,
-          enableNotifications: true,
-          notificationPreferences: {
-            email: true,
-            push: true,
-            inApp: true
-          }
+          automaticRiskDetection: true,
+          realTimeAnalytics: true,
+          engagementNotifications: true
         }
       })
       return NextResponse.json(defaultConfig)
