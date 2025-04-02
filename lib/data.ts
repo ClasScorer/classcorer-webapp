@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma"
+import { prisma } from "./prisma"
 
 // Data types based on the normalized schema
 export type UserRole = 'PROFESSOR' | 'TEACHING_ASSISTANT' | 'ADMIN';
