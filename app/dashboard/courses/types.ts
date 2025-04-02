@@ -1,3 +1,17 @@
+export interface Student {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string;
+  score: number;
+  average: number;
+  trend: 'up' | 'down';
+  attendance: number;
+  streak: number;
+  status: 'Active' | 'At Risk';
+  grade: 'A' | 'B' | 'C' | 'D' | 'F';
+}
+
 export interface CourseStats {
   average: number;
   previousAverage: number;
@@ -39,6 +53,7 @@ export interface CourseData {
   totalStudents: number;
   attendance: number;
   passRate: number;
+  students: Student[];
   stats: {
     classAverage: CourseStats;
     engagement: CourseEngagement;

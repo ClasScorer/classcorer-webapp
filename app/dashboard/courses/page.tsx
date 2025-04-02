@@ -1,9 +1,9 @@
 import { Metadata } from 'next'
 import { AddCourseDialog } from '@/app/components/add-course-dialog'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { prisma } from '@/app/lib/prisma'
+import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/app/lib/auth'
+import { authOptions } from '@/lib/auth'
 import Link from 'next/link'
 
 export const metadata: Metadata = {

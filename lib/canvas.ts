@@ -1,5 +1,5 @@
 import { getCourseById } from './data';
-import { prisma } from '@/lib/prisma';
+import { prisma } from './prisma';
 
 // Canvas API base URL and token will be fetched from environment variables
 const CANVAS_API_URL = process.env.CANVAS_API_URL || '';
