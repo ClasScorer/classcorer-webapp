@@ -19,16 +19,9 @@ export async function GET() {
       const defaultConfig = await prisma.advancedConfig.create({
         data: {
           userId: session.user.id,
-          enableDeadzones: false,
-          enableCustomScoring: false,
-          customScoringRules: {},
-          enableAnalytics: true,
-          enableNotifications: true,
-          notificationPreferences: {
-            email: true,
-            push: true,
-            inApp: true
-          }
+          automaticRiskDetection: true,
+          realTimeAnalytics: true,
+          engagementNotifications: true
         }
       })
       return NextResponse.json(defaultConfig)
