@@ -1,17 +1,21 @@
 import { useState, useEffect } from 'react';
-import { X, Maximize2, Minimize2 } from 'lucide-react';
+import { X, Maximize2, Minimize2, Hand, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 
-// Sample activity log item type
+// Expanded activity log item type
 type ActivityLogItem = {
   id: string;
   message: string;
   timestamp: Date;
   type?: 'info' | 'warning' | 'error' | 'success';
+  studentId?: string;
+  studentName?: string;
+  actionType?: 'hand_raised' | 'focus_change' | 'join' | 'leave';
+  focused?: boolean;
 };
 
 interface SlidesPopupProps {
@@ -21,6 +25,7 @@ interface SlidesPopupProps {
   presentationId?: string;
   lectureId?: string;
   embedUrl?: string;
+  sessionId?: string;
 }
 
 export default function SlidesPopup({ 
@@ -29,10 +34,12 @@ export default function SlidesPopup({
   className,
   presentationId,
   lectureId,
-  embedUrl
+  embedUrl,
+  sessionId
 }: SlidesPopupProps) {
   const [activityLog, setActivityLog] = useState<ActivityLogItem[]>([]);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Toggle fullscreen function
   const toggleFullScreen = () => {
@@ -53,35 +60,42 @@ export default function SlidesPopup({
     }
   };
 
-  // Example useEffect for demonstration - could fetch or subscribe to real-time events
+  // Fetch activity data from the API
+  const fetchActivityData = async () => {
+    if (!sessionId || !lectureId) return;
+
+    try {
+      setIsLoading(true);
+      const response = await fetch(`/api/activity?sessionId=${sessionId}&lectureId=${lectureId}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        const formattedActivities = data.map((item: any) => ({
+          ...item,
+          timestamp: new Date(item.timestamp)
+        }));
+        
+        setActivityLog(formattedActivities);
+      }
+    } catch (error) {
+      console.error('Error fetching activity data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch activity data initially and set up polling
   useEffect(() => {
-    if (isOpen) {
-      // Demo data, in a real app would be replaced with actual data source
-      const demoActivities: ActivityLogItem[] = [
-        { id: '1', message: 'Session started', timestamp: new Date(), type: 'info' },
-        { id: '2', message: 'Slide 1 loaded', timestamp: new Date(), type: 'success' },
-      ];
+    if (isOpen && sessionId && lectureId) {
+      // Initial fetch
+      fetchActivityData();
       
-      setActivityLog(demoActivities);
-      
-      // Simulate receiving new activities
-      const interval = setInterval(() => {
-        const types: ActivityLogItem['type'][] = ['info', 'warning', 'error', 'success'];
-        const randomType = types[Math.floor(Math.random() * types.length)];
-        
-        const newActivity = {
-          id: Math.random().toString(36).substring(2, 9),
-          message: `Activity ${new Date().toLocaleTimeString()}`,
-          timestamp: new Date(),
-          type: randomType
-        };
-        
-        setActivityLog(prev => [...prev, newActivity]);
-      }, 5000);
+      // Set up polling every 2 seconds
+      const interval = setInterval(fetchActivityData, 2000);
       
       return () => clearInterval(interval);
     }
-  }, [isOpen]);
+  }, [isOpen, sessionId, lectureId]);
 
   // Listen for fullscreen changes initiated by browser (e.g., Escape key)
   useEffect(() => {
@@ -152,14 +166,17 @@ export default function SlidesPopup({
           {/* Activity log (30%) */}
           <div className="w-[30%] h-full border-l overflow-hidden flex flex-col">
             <div className="bg-muted/50 p-3">
-              <h3 className="font-medium">Activity Log</h3>
+              <h3 className="font-medium">Student Activity</h3>
+              <p className="text-xs text-muted-foreground">Live updates from classroom</p>
             </div>
             <Separator />
             
             <ScrollArea className="flex-1">
               <div className="p-3 space-y-3">
-                {activityLog.length === 0 ? (
-                  <p className="text-muted-foreground text-center p-4">No activity yet</p>
+                {isLoading && activityLog.length === 0 ? (
+                  <p className="text-muted-foreground text-center p-4">Loading activity data...</p>
+                ) : activityLog.length === 0 ? (
+                  <p className="text-muted-foreground text-center p-4">No student activity detected yet</p>
                 ) : (
                   activityLog.map((activity) => (
                     <ActivityLogEntry key={activity.id} activity={activity} />
@@ -182,12 +199,25 @@ function ActivityLogEntry({ activity }: { activity: ActivityLogItem }) {
     success: "bg-green-50 border-green-200 text-green-800 dark:bg-green-950 dark:border-green-900 dark:text-green-300"
   };
 
+  // Determine which icon to show based on activity type
+  const getActivityIcon = () => {
+    if (activity.actionType === 'hand_raised') {
+      return <Hand className="h-4 w-4 mr-2" />;
+    } else if (activity.actionType === 'focus_change') {
+      return activity.focused ? <Eye className="h-4 w-4 mr-2" /> : <EyeOff className="h-4 w-4 mr-2" />;
+    }
+    return null;
+  };
+
   return (
     <div className={cn(
       "p-3 rounded-md border",
       activity.type ? typeStyles[activity.type] : "bg-card border-border"
     )}>
-      <p className="text-sm font-medium">{activity.message}</p>
+      <div className="flex items-center">
+        {getActivityIcon()}
+        <p className="text-sm font-medium">{activity.message}</p>
+      </div>
       <p className="text-xs opacity-70 mt-1">
         {activity.timestamp.toLocaleTimeString()}
       </p>

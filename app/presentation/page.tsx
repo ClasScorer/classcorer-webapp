@@ -60,6 +60,13 @@ function PresentationContent() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
   
+  // Log the session identifier to help with debugging
+  useEffect(() => {
+    if (sessionId && lectureId) {
+      console.log(`Presentation display active: Session ${sessionId} for Lecture ${lectureId}`);
+    }
+  }, [sessionId, lectureId]);
+  
   return (
     <div className="h-screen w-screen overflow-hidden bg-background">
       {/* Use the SlidesPopup component but modify it to be a full page rather than a modal */}
@@ -67,10 +74,11 @@ function PresentationContent() {
         isOpen={isOpen}
         onClose={handleClose}
         className="!bg-transparent !backdrop-blur-none" // Remove modal styling
-        // Pass presentation parameters if your SlidesPopup supports them
+        // Pass presentation parameters
         presentationId={presentationId || undefined}
         lectureId={lectureId || undefined}
         embedUrl={embedUrl || undefined}
+        sessionId={sessionId || undefined}
       />
       
       {/* Only show if closed (should rarely happen) */}
