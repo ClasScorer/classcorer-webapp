@@ -417,25 +417,87 @@ export async function loadCourses(): Promise<Course[]> {
       const averageScore = totalAssignments > 0 ? totalScore / totalAssignments : 0;
       const attendanceRate = totalAttendances > 0 ? (presentAttendances / totalAttendances) * 100 : 0;
       
-      // Transform students data
+      // Transform students data with actual metrics
       const students = course.students?.map((enrollment: any) => {
         const student = enrollment.student;
+        
+        // Get student's submissions for this course
+        const studentSubmissions = course.assignments?.flatMap((a: any) => 
+          a.submissions?.filter((s: any) => s.studentId === student.id)
+        ) || [];
+        
+        // Get student's attendances for this course
+        const studentAttendances = course.lectures?.flatMap((l: any) => 
+          l.attendances?.filter((a: any) => a.studentId === student.id)
+        ) || [];
+        
+        // Calculate student metrics
+        const studentTotalScore = studentSubmissions.reduce((sum: number, s: any) => 
+          sum + (s.score || 0), 0);
+        
+        const studentAverage = studentSubmissions.length > 0 
+          ? studentTotalScore / studentSubmissions.length 
+          : 0;
+        
+        const studentAttendanceCount = studentAttendances.length;
+        const studentPresentCount = studentAttendances.filter((a: any) => a.status === 'PRESENT').length;
+        const studentAttendanceRate = studentAttendanceCount > 0 
+          ? Math.round((studentPresentCount / studentAttendanceCount) * 100)
+          : 100;
+        
+        // Determine grade based on average
+        let grade = 'F';
+        if (studentAverage >= 90) grade = 'A';
+        else if (studentAverage >= 80) grade = 'B';
+        else if (studentAverage >= 70) grade = 'C';
+        else if (studentAverage >= 60) grade = 'D';
+        
+        // Calculate trend (up or down) based on recent submissions
+        const sortedSubmissions = [...studentSubmissions].sort((a: any, b: any) => 
+          new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+        );
+        
+        const recentSubmissions = sortedSubmissions.slice(0, 3);
+        const olderSubmissions = sortedSubmissions.slice(3, 6);
+        
+        const recentAvg = recentSubmissions.length > 0
+          ? recentSubmissions.reduce((sum: number, s: any) => sum + (s.score || 0), 0) / recentSubmissions.length
+          : 0;
+          
+        const olderAvg = olderSubmissions.length > 0
+          ? olderSubmissions.reduce((sum: number, s: any) => sum + (s.score || 0), 0) / olderSubmissions.length
+          : 0;
+        
+        const trend = recentSubmissions.length > 0 && olderSubmissions.length > 0
+          ? recentAvg >= olderAvg ? 'up' : 'down'
+          : 'up';
+        
+        // Calculate streak based on consecutive attendances
+        const streak = calculateStreak(studentAttendances);
+        
+        // Calculate progress based on assignments completed
+        const progress = Math.min(
+          Math.round((studentSubmissions.length / Math.max(course.assignments?.length || 1, 1)) * 100),
+          100
+        );
+        
         return {
           id: student.id,
           name: student.name,
           email: student.email,
           avatar: student.avatar || `/avatars/${Math.floor(Math.random() * 5) + 1}.png`,
-          score: Math.round(Math.random() * 100), // Placeholder
-          level: Math.floor(Math.random() * 5) + 1, // Placeholder
-          average: Math.round(Math.random() * 100), // Placeholder
-          attendance: Math.round(Math.random() * 100), // Placeholder
-          submissions: Math.floor(Math.random() * 10), // Placeholder
-          status: Math.random() > 0.8 ? 'At Risk' : 'Active', // Placeholder
-          trend: Math.random() > 0.5 ? 'up' : 'down', // Placeholder
-          badges: [], // Placeholder
-          progress: Math.round(Math.random() * 100), // Placeholder
-          streak: Math.floor(Math.random() * 10), // Placeholder
-          grade: ['A', 'B', 'C', 'D', 'F'][Math.floor(Math.random() * 5)], // Placeholder
+          score: Math.round(studentTotalScore),
+          level: calculateLevel(Math.round(studentTotalScore)),
+          average: Math.round(studentAverage),
+          attendance: studentAttendanceRate,
+          submissions: studentSubmissions.length,
+          lastSubmission: sortedSubmissions.length > 0 ? sortedSubmissions[0].submittedAt : undefined,
+          status: studentAverage < 60 ? 'At Risk' : 'Active',
+          trend,
+          badges: [], // Will be populated separately
+          progress,
+          streak,
+          grade,
           courseId: course.id,
           course: {
             name: course.name,
@@ -443,6 +505,14 @@ export async function loadCourses(): Promise<Course[]> {
           }
         };
       }) || [];
+
+      // Calculate at-risk count based on actual student data
+      const atRiskCount = students.filter(s => s.status === 'At Risk').length;
+      
+      // Calculate pass rate based on actual student data
+      const passRate = totalStudents > 0 
+        ? Math.round((students.filter(s => s.average >= 60).length / totalStudents) * 100)
+        : 0;
 
       return {
         id: course.id,
@@ -458,10 +528,10 @@ export async function loadCourses(): Promise<Course[]> {
         progress,
         average: Math.round(averageScore),
         attendance: Math.round(attendanceRate),
-        passRate: Math.round((students.filter(s => s.average >= 60).length / totalStudents) * 100),
+        passRate,
         classAverage: Math.round(averageScore),
         totalStudents,
-        atRiskCount: students.filter(s => s.status === 'At Risk').length,
+        atRiskCount,
         students
       };
     });

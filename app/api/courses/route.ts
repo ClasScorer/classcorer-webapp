@@ -51,7 +51,41 @@ export async function GET() {
       }
     });
 
-    return NextResponse.json(courses);
+    // Transform the courses data to include totalStudents and other computed fields
+    const transformedCourses = courses.map(course => {
+      const totalStudents = course.students?.length || 0;
+      
+      // Calculate week number based on start date
+      const week = course.startDate 
+        ? Math.ceil(Math.abs(new Date().getTime() - new Date(course.startDate).getTime()) / (7 * 24 * 60 * 60 * 1000))
+        : 1;
+      
+      // Calculate progress based on start and end dates
+      let progress = 0;
+      if (course.startDate && course.endDate) {
+        const start = new Date(course.startDate).getTime();
+        const end = new Date(course.endDate).getTime();
+        const now = new Date().getTime();
+        
+        if (now <= start) progress = 0;
+        else if (now >= end) progress = 100;
+        else {
+          const totalDuration = end - start;
+          const elapsed = now - start;
+          progress = Math.round((elapsed / totalDuration) * 100);
+        }
+      }
+
+      return {
+        ...course,
+        totalStudents,
+        week,
+        progress,
+        status: progress === 100 ? 'Completed' : progress > 0 ? 'Active' : 'Upcoming'
+      };
+    });
+
+    return NextResponse.json(transformedCourses);
   } catch (error) {
     console.error('Error fetching courses:', error);
     return new NextResponse('Internal Server Error', { status: 500 });
