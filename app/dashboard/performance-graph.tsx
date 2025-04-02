@@ -2,7 +2,7 @@
 
 import { Card, CardContent } from "@/components/ui/card"
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts"
-import { type Course } from "@/lib/data"
+import { type CourseData } from "./courses/types"
 
 interface PerformanceData {
   week: number
@@ -11,7 +11,7 @@ interface PerformanceData {
   attendance: number
 }
 
-function calculateWeeklyStats(courses: Course[]): PerformanceData[] {
+function calculateWeeklyStats(courses: CourseData[]): PerformanceData[] {
   const maxWeek = Math.max(...courses.map(course => course.week))
   const weeklyStats: PerformanceData[] = []
   
@@ -51,7 +51,11 @@ function calculateWeeklyStats(courses: Course[]): PerformanceData[] {
   return weeklyStats
 }
 
-export function PerformanceGraph({ courses }: { courses: Course[] }) {
+interface PerformanceGraphProps {
+  courses: CourseData[];
+}
+
+export function PerformanceGraph({ courses }: PerformanceGraphProps) {
   const data = calculateWeeklyStats(courses)
 
   return (
