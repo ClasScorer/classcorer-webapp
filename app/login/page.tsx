@@ -24,36 +24,6 @@ export default function LoginPage() {
     }
   }, [searchParams]);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setError(null);
-    setIsLoading(true);
-
-    const formData = new FormData(e.currentTarget);
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
-
-    try {
-      const result = await signIn("credentials", {
-        email,
-        password,
-        redirect: false,
-      });
-
-      if (result?.error) {
-        setError("Invalid email or password");
-        return;
-      }
-
-      router.push("/dashboard");
-      router.refresh();
-    } catch (error) {
-      setError("An error occurred. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
@@ -70,7 +40,8 @@ export default function LoginPage() {
               <p className="text-sm">Account created successfully! Please sign in.</p>
             </div>
           )}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          
+          <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -78,6 +49,7 @@ export default function LoginPage() {
                 name="email"
                 type="email"
                 placeholder="professor@university.edu"
+                defaultValue="test@example.com"
                 required
               />
             </div>
@@ -87,6 +59,7 @@ export default function LoginPage() {
                 id="password"
                 name="password"
                 type="password"
+                defaultValue="password123"
                 required
               />
             </div>
@@ -96,21 +69,114 @@ export default function LoginPage() {
                 <p className="text-sm">{error}</p>
               </div>
             )}
+            
+            {/* Login with test credentials button */}
             <Button
-              type="submit"
+              className="w-full mb-4"
+              onClick={async () => {
+                console.log("Using test credentials");
+                setIsLoading(true);
+                setError(null);
+                
+                try {
+                  const result = await signIn("credentials", {
+                    email: "test@example.com",
+                    password: "password123",
+                    redirect: true,
+                    callbackUrl: "/dashboard"
+                  });
+                  
+                  console.log("Test login result:", result);
+                  
+                  // With redirect:true above, this code won't run unless there's an error
+                  if (result?.error) {
+                    setError(`Test login failed: ${result.error}`);
+                  }
+                } catch (err) {
+                  console.error("Test login error:", err);
+                  setError(`Test login error: ${err instanceof Error ? err.message : String(err)}`);
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
+              disabled={isLoading}
+            >
+              {isLoading ? "Signing in..." : "Sign in with Test Account"}
+            </Button>
+            
+            {/* Normal login form button */}
+            <Button
+              type="button"
               className="w-full"
+              onClick={async () => {
+                console.log("Manual login button clicked");
+                const email = (document.getElementById("email") as HTMLInputElement)?.value;
+                const password = (document.getElementById("password") as HTMLInputElement)?.value;
+                
+                if (!email || !password) {
+                  setError("Please enter email and password");
+                  return;
+                }
+                
+                setIsLoading(true);
+                setError(null);
+                
+                try {
+                  console.log("Calling signIn with:", { email });
+                  const result = await signIn("credentials", {
+                    email,
+                    password,
+                    redirect: true,
+                    callbackUrl: "/dashboard"
+                  });
+                  
+                  console.log("Sign in result:", result);
+                  
+                  // With redirect:true above, this code won't run unless there's an error
+                  if (result?.error) {
+                    setError(`Authentication failed: ${result.error}`);
+                  }
+                } catch (err) {
+                  console.error("Sign in error:", err);
+                  setError(`Error: ${err instanceof Error ? err.message : String(err)}`);
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
               disabled={isLoading}
             >
               {isLoading ? "Signing in..." : "Sign in"}
             </Button>
-          </form>
+          </div>
         </CardContent>
-        <CardFooter className="flex justify-center">
+        <CardFooter className="flex flex-col gap-2 justify-center">
           <div className="text-sm text-center">
             Don't have an account?{" "}
             <Link href="/signup" className="text-primary hover:underline">
               Sign up
             </Link>
+          </div>
+          <div className="text-xs text-center text-muted-foreground">
+            <a 
+              href="/api/debug-auth" 
+              target="_blank" 
+              className="hover:underline"
+              onClick={async (e) => {
+                e.preventDefault();
+                try {
+                  setError(null);
+                  const res = await fetch('/api/debug-auth');
+                  const data = await res.json();
+                  console.log("Debug auth result:", data);
+                  setError(`Test user created/verified: ${data.user.email} (password: password123)`);
+                } catch (err) {
+                  console.error("Error creating test user:", err);
+                  setError(`Error creating test user: ${err instanceof Error ? err.message : String(err)}`);
+                }
+              }}
+            >
+              Create test account
+            </a>
           </div>
         </CardFooter>
       </Card>
