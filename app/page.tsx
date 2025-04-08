@@ -1,101 +1,68 @@
 import Image from "next/image";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
-export default function Home() {
+export default function LandingPage() {
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
+    <main className="min-h-screen bg-white text-gray-800 p-8">
+      {/* Logo and Header */}
+      <section className="flex flex-col items-center mb-12">
         <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
+          src="/logo.jpg"
+          alt="ClassScorer Logo"
+          width={400}
+          height={400}
         />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+        
+      </section>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+      {/* What is ClassScorer */}
+      <section className="max-w-3xl mx-auto mb-12 text-center">
+        <h2 className="text-2xl font-semibold mb-4 text-purple-600">What is ClassScorer?</h2>
+        <p className="text-md">
+          🎓 ClassScorer is your all-in-one smart platform designed to empower professors with effortless course and lecture management. Seamlessly track student attendance, monitor engagement, and enhance learning through interactive gamified features — all from one intuitive dashboard. Whether you're leading a large lecture hall or a focused seminar, ClassScorer transforms traditional teaching into a dynamic, data-driven experience.
+        </p>
+      </section>
+
+      {/* Features */}
+      <section className="max-w-4xl mx-auto mb-12 text-center">
+        <h2 className="text-2xl font-semibold mb-4 text-purple-600">Features</h2>
+        <ul className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <li className="bg-purple-100 p-4 rounded-2xl shadow">📊 Attendance Report</li>
+          <li className="bg-purple-100 p-4 rounded-2xl shadow">🎮 Gamification</li>
+          <li className="bg-purple-100 p-4 rounded-2xl shadow">📈 Monitor Student Activity</li>
+          <li className="bg-purple-100 p-4 rounded-2xl shadow">🏆 Leaderboard Report</li>
+        </ul>
+      </section>
+
+      {/* Team Section */}
+      <section className="max-w-3xl mx-auto mb-12 text-center">
+        <h2 className="text-2xl font-semibold mb-4 text-purple-600">About the Team</h2>
+        <p className="text-md">
+          The team consists of five members, each with expertise in different fields:
+        </p>
+        <ul className="mt-4 space-y-2">
+          <li>🤖 Malak Amr – AI Expert</li>
+          <li>🤖 Youssef Badir – AI Expert</li>
+          <li>🤖 Mohamed Issa – AI Expert</li>
+          <li>💻 Mazen Mohamed – Front-End Developer</li>
+          <li>🛠️ Adham Ayman – Back-End Developer</li>
+        </ul>
+      </section>
+
+      {/* Auth Buttons */}
+      <section className="flex justify-center space-x-6 mt-10">
+        <Link href="/login">
+          <Button className="bg-purple-600 text-white hover:bg-purple-700 px-6 py-2 text-lg rounded-xl">
+            Login
+          </Button>
+        </Link>
+        <Link href="/signup">
+          <Button variant="outline" className="border-purple-600 text-purple-600 hover:bg-purple-50 px-6 py-2 text-lg rounded-xl">
+            Sign Up
+          </Button>
+        </Link>
+      </section>
+    </main>
   );
 }
