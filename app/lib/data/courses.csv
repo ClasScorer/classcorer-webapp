@@ -1,4 +1,0 @@
-id,code,name,term,section,totalStudents,attendance,passRate,classAverage,previousAverage,target,trend,engagement,engagementTrend,activeStudents,atRiskCount,completionRate,submittedCount,totalAssignments,nextDueAssignment,status,progress,currentWeek,totalWeeks,currentTopic,nextTopic
-cse123,CSE123,Database Systems,Spring 2024,Section 001,125,92,85,88,86,85,2.5,78,-5,98,12,85,15,18,Project Phase 2,on-track,75,10,14,Advanced SQL,Indexing
-cse234,CSE234,Web Development,Spring 2024,Section 002,95,88,90,92,89,85,3,85,2,88,5,92,11,12,Final Project,ahead,80,11,14,React State Management,Server Components
-cse456,CSE456,Machine Learning,Spring 2024,Section 003,75,95,82,84,83,85,-1,90,3,72,8,88,7,8,Neural Networks Project,on-schedule,70,9,14,Deep Learning,Convolutional Networks 

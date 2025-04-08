@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/app/lib/prisma'
+import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/app/lib/auth'
+import { authOptions } from '@/lib/auth'
 import { z } from 'zod'
 
 // Course validation schema
@@ -14,65 +14,81 @@ const courseSchema = z.object({
 
 export async function GET() {
   try {
-    // Check authentication
-    const session = await getServerSession(authOptions)
+    const session = await getServerSession(authOptions);
     
-    // Enhanced logging for auth debugging
-    console.log('Course API: Auth session check:', { 
-      hasSession: !!session,
-      hasUser: !!session?.user,
-      userId: session?.user?.id || 'not available' 
-    });
-    
-    if (!session) {
-      console.error('Course API: Authentication failed: No session found');
-      return NextResponse.json({ error: 'Unauthorized: No valid session' }, { status: 401 })
-    }
-    
-    if (!session.user) {
-      console.error('Course API: Authentication failed: No valid session user found');
-      return NextResponse.json({ error: 'Unauthorized: No valid session' }, { status: 401 })
-    }
-    
-    if (!session.user.id) {
-      console.error('Course API: Authentication issue: User ID missing in session');
-      return NextResponse.json({ error: 'Unauthorized: User ID missing' }, { status: 401 })
+    if (!session?.user) {
+      return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    // Get courses for the current instructor
+    // Get all courses with instructor data
     const courses = await prisma.course.findMany({
-      where: { 
-        instructorId: session.user.id 
+      where: {
+        instructorId: session.user.id
       },
       include: {
         instructor: {
           select: {
+            id: true,
             name: true,
-            email: true,
-          },
+            email: true
+          }
         },
         students: {
           include: {
-            student: true,
-          },
+            student: true
+          }
         },
-        lectures: true,
-        assignments: true,
-        announcements: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+        assignments: {
+          include: {
+            submissions: true
+          }
+        },
+        lectures: {
+          include: {
+            attendances: true
+          }
+        }
+      }
+    });
 
-    // Transform the response to include students directly
-    const transformedCourses = courses.map(course => ({
-      ...course,
-      students: course.students.map(enrollment => enrollment.student)
-    }))
+    // Transform the courses data to include totalStudents and other computed fields
+    const transformedCourses = courses.map(course => {
+      const totalStudents = course.students?.length || 0;
+      
+      // Calculate week number based on start date
+      const week = course.startDate 
+        ? Math.ceil(Math.abs(new Date().getTime() - new Date(course.startDate).getTime()) / (7 * 24 * 60 * 60 * 1000))
+        : 1;
+      
+      // Calculate progress based on start and end dates
+      let progress = 0;
+      if (course.startDate && course.endDate) {
+        const start = new Date(course.startDate).getTime();
+        const end = new Date(course.endDate).getTime();
+        const now = new Date().getTime();
+        
+        if (now <= start) progress = 0;
+        else if (now >= end) progress = 100;
+        else {
+          const totalDuration = end - start;
+          const elapsed = now - start;
+          progress = Math.round((elapsed / totalDuration) * 100);
+        }
+      }
 
-    return NextResponse.json(transformedCourses)
+      return {
+        ...course,
+        totalStudents,
+        week,
+        progress,
+        status: progress === 100 ? 'Completed' : progress > 0 ? 'Active' : 'Upcoming'
+      };
+    });
+
+    return NextResponse.json(transformedCourses);
   } catch (error) {
-    console.error('[COURSES_GET]', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Error fetching courses:', error);
+    return new NextResponse('Internal Server Error', { status: 500 });
   }
 }
 

@@ -1,3 +1,5 @@
+"use client";
+
 import { CourseData } from "./types";
 import {
   Card,
@@ -10,12 +12,69 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PerformanceGraph } from "../performance-graph";
 import { StudentLeaderboard } from "../student-leaderboard";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 
 interface CoursePageProps {
-  data: CourseData;
+  initialData?: CourseData;
 }
 
-export function CoursePage({ data }: CoursePageProps) {
+export function CoursePage({ initialData }: CoursePageProps) {
+  const [data, setData] = useState<CourseData | null>(initialData || null);
+  const [loading, setLoading] = useState(!initialData);
+  const [error, setError] = useState<string | null>(null);
+  const params = useParams();
+  const courseId = params.courseId as string;
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const studentsPerPage = 10;
+  
+  useEffect(() => {
+    if (!initialData) {
+      fetch(`/api/courses/${courseId}`)
+        .then((res) => {
+          if (!res.ok) throw new Error('Failed to fetch course data');
+          return res.json();
+        })
+        .then((data) => {
+          console.log('Fetched course data:', data);
+          setData(data);
+          setLoading(false);
+        })
+        .catch((err) => {
+          console.error('Error fetching course data:', err);
+          setError(err.message);
+          setLoading(false);
+        });
+    }
+  }, [courseId, initialData]);
+
+  if (loading) {
+    return <div className="p-8">Loading...</div>;
+  }
+
+  if (error) {
+    return <div className="p-8 text-red-500">Error: {error}</div>;
+  }
+
+  if (!data) {
+    return <div className="p-8">No course data found</div>;
+  }
+
+  console.log('Current data state:', data);
+  console.log('Students array:', data.students);
+
+  // Calculate pagination
+  const totalPages = Math.ceil((data.students?.length || 0) / studentsPerPage);
+  const startIndex = (currentPage - 1) * studentsPerPage;
+  const endIndex = startIndex + studentsPerPage;
+  const currentStudents = data.students?.slice(startIndex, endIndex) || [];
+
+  console.log('Current students slice:', currentStudents);
+
   return (
     <div className="min-h-screen bg-background">
       <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
@@ -181,11 +240,11 @@ export function CoursePage({ data }: CoursePageProps) {
               <div className="flex items-center space-x-2">
                 <span className={`text-xs ${
                   data.stats.progress.status === 'ahead' ? 'bg-green-100 text-green-700' :
-                  data.stats.progress.status === 'on-schedule' ? 'bg-blue-100 text-blue-700' :
+                  data.stats.progress.status === 'on-track' ? 'bg-blue-100 text-blue-700' :
                   'bg-amber-100 text-amber-700'
                 } px-2 py-0.5 rounded-full`}>
                   {data.stats.progress.status === 'ahead' ? 'Ahead' :
-                   data.stats.progress.status === 'on-schedule' ? 'On Schedule' :
+                   data.stats.progress.status === 'on-track' ? 'On Track' :
                    'Behind'}
                 </span>
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-muted-foreground">
@@ -229,7 +288,7 @@ export function CoursePage({ data }: CoursePageProps) {
               </CardHeader>
               <CardContent className="pl-2 overflow-x-auto">
                 <div className="min-w-[600px] md:min-w-0">
-                  <PerformanceGraph />
+                  <PerformanceGraph courses={[data]} />
                 </div>
               </CardContent>
             </Card>
@@ -237,13 +296,108 @@ export function CoursePage({ data }: CoursePageProps) {
           <TabsContent value="students" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Student Rankings</CardTitle>
+                <CardTitle>Student Performance</CardTitle>
                 <CardDescription>
-                  Performance breakdown by student 📊
+                  Detailed breakdown of student performance and attendance
                 </CardDescription>
               </CardHeader>
-              <CardContent className="p-0 sm:p-6">
-                <StudentLeaderboard />
+              <CardContent>
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Student</TableHead>
+                        <TableHead className="text-right">Score</TableHead>
+                        <TableHead className="text-right">Average</TableHead>
+                        <TableHead className="text-right">Attendance</TableHead>
+                        <TableHead className="text-right">Status</TableHead>
+                        <TableHead className="text-right">Grade</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {currentStudents.map((student) => (
+                        <TableRow key={student.id}>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <img
+                                src={student.avatar}
+                                alt={student.name}
+                                className="h-8 w-8 rounded-full"
+                              />
+                              <div>
+                                <div>{student.name}</div>
+                                <div className="text-xs text-muted-foreground">{student.email}</div>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">{student.score}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {student.average}%
+                              <span className={`text-xs ${student.trend === 'up' ? 'text-green-500' : 'text-red-500'}`}>
+                                {student.trend === 'up' ? '↑' : '↓'}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {student.attendance}%
+                              <span className={`text-xs ${student.streak > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                {student.streak} day streak
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                              student.status === 'At Risk' 
+                                ? 'bg-red-100 text-red-700' 
+                                : 'bg-green-100 text-green-700'
+                            }`}>
+                              {student.status}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                              student.grade === 'A' ? 'bg-green-100 text-green-700' :
+                              student.grade === 'B' ? 'bg-blue-100 text-blue-700' :
+                              student.grade === 'C' ? 'bg-yellow-100 text-yellow-700' :
+                              student.grade === 'D' ? 'bg-orange-100 text-orange-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>
+                              {student.grade}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <div className="flex items-center justify-between px-2 py-4 border-t">
+                    <div className="flex-1 text-sm text-muted-foreground">
+                      Showing {startIndex + 1} to {Math.min(endIndex, data.students?.length || 0)} of {data.students?.length || 0} students
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                        disabled={currentPage === 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <div className="text-sm font-medium">
+                        Page {currentPage} of {totalPages}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                        disabled={currentPage === totalPages}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
