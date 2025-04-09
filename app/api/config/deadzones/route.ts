@@ -29,12 +29,31 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const deadzone = await prisma.deadzone.create({
-      data: {
+
+    const { name, coordinates } = body
+
+    if (!name || !coordinates) {
+      console.log("Invalid data:", { name, coordinates })
+      return new NextResponse("Missing name or coordinates", { status: 400 })
+    }
+    
+    const deadzone = await prisma.deadzone.upsert({
+      where: {
+        userId_name: {
+          userId: session.user.id,
+          name: name
+        }
+      },
+      update: {
+        coordinates
+      },
+      create: {
         userId: session.user.id,
-        ...body
+        name,
+        coordinates
       }
     })
+    
 
     return NextResponse.json(deadzone)
   } catch (error) {
