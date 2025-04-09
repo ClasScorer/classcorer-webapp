@@ -154,21 +154,11 @@ export default function ConfigurationPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [deadzone, setDeadzone] = useState<Deadzone | undefined>();
 
-  const handleSaveDeadzone = (newDeadzone: Omit<Deadzone, "id" | "professorId" | "createdAt" | "updatedAt">) => {
-    setDeadzone({
-      id: "1",
-      professorId: "prof-1",
-      ...newDeadzone,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    setIsEditing(false);
-  };
   // Fetch configurations on component mount
   useEffect(() => {
     const fetchConfigs = async () => {
       try {
-        setIsLoading(true)
+        setIsLoading(true);
         const [scoring, threshold, decay, bonus, advanced, deadzones] = await Promise.all([
           fetch('/api/config/scoring').then(res => res.json()),
           fetch('/api/config/threshold').then(res => res.json()),
@@ -176,33 +166,40 @@ export default function ConfigurationPage() {
           fetch('/api/config/bonus').then(res => res.json()),
           fetch('/api/config/advanced').then(res => res.json()),
           fetch('/api/config/deadzones').then(res => res.json()),
-        ])
+        ]);
 
-        if (scoring) setScoringConfig(scoring)
-        if (threshold) setThresholdConfig(threshold)
-        if (decay) setDecayConfig(decay)
-        if (bonus) setBonusConfig(bonus)
-        if (advanced) setAdvancedConfig(advanced)
-        if (deadzones?.length > 0) setDeadzone(deadzones[0])
+        if (scoring) setScoringConfig(scoring);
+        if (threshold) setThresholdConfig(threshold);
+        if (decay) setDecayConfig(decay);
+        if (bonus) setBonusConfig(bonus);
+        if (advanced) setAdvancedConfig(advanced);
+        if (deadzones?.length > 0) setDeadzone(deadzones[0]);
         
-        toast.success("Configuration loaded successfully")
+        toast.success("Configuration loaded successfully");
       } catch (error) {
-        toast.error("Failed to load configurations")
-        console.error("[CONFIG_LOAD]", error)
+        toast.error("Failed to load configurations");
+        console.error("[CONFIG_LOAD]", error);
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
-    }
+    };
 
-    fetchConfigs()
-  }, [])
+    fetchConfigs();
+  }, []);
 
-  const handleSaveDeadzone = async (newDeadzone: { coordinates: { x: number; y: number; width: number; height: number }[] }) => {
+  const handleSaveDeadzone = async (newDeadzone: { 
+    coordinates?: { x: number; y: number; width: number; height: number }[];
+    name?: string;
+    id?: string;
+    professorId?: string;
+    createdAt?: Date;
+    updatedAt?: Date;
+  }) => {
     try {
       setIsSaving(true);
   
       const payload = {
-        name: "default", // must be unique per user
+        name: newDeadzone.name || "default",
         coordinates: newDeadzone.coordinates || [],
       };
   
@@ -227,7 +224,6 @@ export default function ConfigurationPage() {
       setIsSaving(false);
     }
   };
- 
 
   const handleSaveConfigs = async () => {
     try {
@@ -734,217 +730,6 @@ export default function ConfigurationPage() {
                       onCheckedChange={(checked) => setBonusConfig(prev => ({ ...prev, enableFiveStreak: checked }))} 
                     />
                   </div>
-
-                  <div>
-                    <div className="flex justify-between mb-2">
-                      <Label>Score Penalty for Talking in class</Label>
-                      <span className="text-muted-foreground">{scoringConfig.talkingBadScore} points</span>
-                    </div>
-                    <Slider
-                      value={[scoringConfig.talkingBadScore]}
-                      onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, talkingBadScore: value }))}
-                      min={-20}
-                      max={0}
-                      step={1}
-                      className="w-full"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between mb-2">
-                      <Label>Score Penalty for Absence</Label>
-                      <span className="text-muted-foreground">{scoringConfig.attendanceBadScore} points</span>
-                    </div>
-                    <Slider
-                      value={[scoringConfig.attendanceBadScore]}
-                      onValueChange={([value]) => setScoringConfig(prev => ({ ...prev, attendanceBadScore: value }))}
-                      min={-20}
-                      max={0}
-                      step={1}
-                      className="w-full"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="decay" className="space-y-6">
-          {isSaving ? <LoadingCard /> : (
-            <Card>
-              <CardHeader>
-                <CardTitle>Decay Configuration</CardTitle>
-                <CardDescription>
-                  Configure how scores decay over time
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between mb-2">
-                      <Label>Decay Rate</Label>
-                      <span className="text-muted-foreground">{decayConfig.decayRate}</span>
-                    </div>
-                    <Slider
-                      value={[decayConfig.decayRate]}
-                      onValueChange={([value]) => setDecayConfig(prev => ({ ...prev, decayRate: value }))}
-                      min={0}
-                      max={1}
-                      step={0.1}
-                      className="w-full"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between mb-2">
-                      <Label>Decay Interval (days)</Label>
-                      <span className="text-muted-foreground">{decayConfig.decayInterval} days</span>
-                    </div>
-                    <Slider
-                      value={[decayConfig.decayInterval]}
-                      onValueChange={([value]) => setDecayConfig(prev => ({ ...prev, decayInterval: value }))}
-                      min={1}
-                      max={7}
-                      step={1}
-                      className="w-full"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between mb-2">
-                      <Label>Decay Threshold</Label>
-                      <span className="text-muted-foreground">{decayConfig.decayThreshold}</span>
-                    </div>
-                    <Slider
-                      value={[decayConfig.decayThreshold]}
-                      onValueChange={([value]) => setDecayConfig(prev => ({ ...prev, decayThreshold: value }))}
-                      min={0}
-                      max={1}
-                      step={0.1}
-                      className="w-full"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="thresholds" className="space-y-6">
-          {isSaving ? <LoadingCard /> : (
-            <Card>
-              <CardHeader>
-                <CardTitle>Performance Thresholds</CardTitle>
-                <CardDescription>
-                  Set minimum requirements for attendance and engagement
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between mb-2">
-                      <Label>Attendance Threshold</Label>
-                      <span className="text-muted-foreground">{thresholdConfig.attendanceThreshold}%</span>
-                    </div>
-                    <Slider
-                      value={[thresholdConfig.attendanceThreshold]}
-                      onValueChange={([value]) => setThresholdConfig(prev => ({ ...prev, attendanceThreshold: value }))}
-                      min={30}
-                      max={90}
-                      step={5}
-                      className="w-full"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between mb-2">
-                      <Label>Engagement Threshold</Label>
-                      <span className="text-muted-foreground">{thresholdConfig.engagementThreshold}%</span>
-                    </div>
-                    <Slider
-                      value={[thresholdConfig.engagementThreshold]}
-                      onValueChange={([value]) => setThresholdConfig(prev => ({ ...prev, engagementThreshold: value }))}
-                      min={30}
-                      max={90}
-                      step={5}
-                      className="w-full"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between mb-2">
-                      <Label>Students at Risk Threshold</Label>
-                      <span className="text-muted-foreground">{thresholdConfig.atRiskThreshold}%</span>
-                    </div>
-                    <Slider
-                      value={[thresholdConfig.atRiskThreshold]}
-                      onValueChange={([value]) => setThresholdConfig(prev => ({ ...prev, atRiskThreshold: value }))}
-                      min={40}
-                      max={80}
-                      step={5}
-                      className="w-full"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="deadzones" className="space-y-6">
-          {isSaving ? <LoadingCard /> : (
-            <Card>
-              <CardHeader>
-                <CardTitle>Deadzone Configuration</CardTitle>
-                <CardDescription>
-                  Configure where tracking should be paused
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Deadzone Editor</h3>
-                  <div className="flex gap-2">
-                    {deadzone && (
-                      <Button
-                        onClick={() => handleDeleteDeadzone(deadzone.id)}
-                        variant="destructive"
-                        disabled={isSaving || isEditing}
-                      >
-                        {isSaving ? (
-                          <>
-                            <span className="animate-spin mr-2">⟳</span>
-                            Deleting...
-                          </>
-                        ) : (
-                          "Delete Deadzone"
-                        )}
-                      </Button>
-                    )}
-                    <Button
-                      onClick={() => setIsEditing(!isEditing)}
-                      variant={isEditing ? "destructive" : "default"}
-                      disabled={isSaving}
-                    >
-                      {isEditing ? "Cancel Editing" : "Edit Deadzone"}
-                    </Button>
-                  </div>
-                </div>
-
-                {isSaving ? (
-                  <div className="flex items-center justify-center p-8">
-                    <div className="flex items-center space-x-4">
-                      <div className="h-8 w-8 animate-spin rounded-full border-t-2 border-primary"></div>
-                      <p>Saving changes...</p>
-                    </div>
-                  </div>
-                ) : (
-                  <CameraView
-                  isEditing={isEditing}
-                  onSave={handleSaveDeadzone}
-                  currentDeadzone={deadzone} // Pass the saved deadzone
-                />
-                )}
 
                   {bonusConfig.enableFiveStreak && (
                     <div>
