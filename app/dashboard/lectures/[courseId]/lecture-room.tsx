@@ -22,6 +22,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { CircularDialogWidget } from "@/app/components/CircularDialogWidget"
+import StudentDetailsDialog from "@/app/dashboard/students/student-details-dialog"
+import { Student as PrismaStudent } from "@prisma/client"
 import Link from "next/link"
 
 // Add Google API types
@@ -255,6 +257,10 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   // Enhanced state for face detection
   const [detectionHistory, setDetectionHistory] = useState<EnhancedFaceDetectionResponse[]>([])
   const [historyView, setHistoryView] = useState(false)
+
+  // Add state for student details dialog
+  const [selectedStudent, setSelectedStudent] = useState<PrismaStudent | null>(null);
+  const [showStudentDialog, setShowStudentDialog] = useState(false);
 
   // Modified function to start a new lecture and activate detection
   const startNewLecture = async (scheduledTime?: Date) => {
@@ -1171,29 +1177,174 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   }, [faceData, students]);
 
   // Function to handle student action selection from dialog
-  const handleCanvasStudentAction = useCallback((actionValue: number) => {
-    if (!selectedFace) return;
+  const handleCanvasStudentAction = useCallback(async (actionValue: number) => {
+    if (!selectedFace || !lectureId) return;
     
     const student = students?.find(s => s.id === selectedFace.person_id);
     const displayName = student ? student.name : selectedFace.name || `Unknown (ID: ${selectedFace.person_id})`;
     
     const actionLabels = {
-      1: "Correct Answer",
-      2: "Attempted Answer",
-      3: "Penalize",
+      1: "Correct Answer (+10pts)",
+      2: "Attempted Answer (+5pts)",
+      3: "Penalize (-5pts)",
       4: "Identify Student",
       5: "Custom Points",
       6: "View Profile"
     };
     
-    toast.success(`${actionLabels[actionValue]} for ${displayName}`, {
-      description: `Applied action: ${actionLabels[actionValue]}`
-    });
+    // Special handling for custom points (action 5)
+    let customPoints = 0;
+    if (actionValue === 5) {
+      const input = prompt("Enter custom points (positive or negative):", "0");
+      if (input === null) {
+        // User cancelled
+        setShowStudentActionDialog(false);
+        setSelectedFace(null);
+        return;
+      }
+      customPoints = parseInt(input, 10) || 0;
+    }
+    
+    try {
+      // Handle View Profile action
+      if (actionValue === 6 && student) {
+        // Fetch the full student data from the API
+        const response = await fetch(`/api/students/${student.id}?include=all`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch student details');
+        }
+        const studentData = await response.json();
+        setSelectedStudent(studentData);
+        setShowStudentDialog(true);
+        return;
+      }
+      
+      // Only update score for actions that affect points
+      if ([1, 2, 3, 5].includes(actionValue) && student) {
+        const response = await fetch('/api/student-scores', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            studentId: student.id,
+            lectureId,
+            actionType: actionValue,
+            customPoints: customPoints
+          }),
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to update student score');
+        }
+        
+        // Special message for custom points
+        const pointsMessage = actionValue === 5 ? 
+          `(${customPoints > 0 ? '+' : ''}${customPoints}pts)` : 
+          actionLabels[actionValue].match(/\([^)]+\)/)?.[0] || '';
+        
+        toast.success(`${actionLabels[actionValue].replace(/\([^)]+\)/, '')} for ${displayName} ${pointsMessage}`, {
+          description: `Student's score has been updated`
+        });
+      } else if (actionValue !== 6) {
+        // For non-scoring actions like View Profile
+        toast.info(`${actionLabels[actionValue]} for ${displayName}`, {
+          description: `Action applied successfully`
+        });
+      }
+    } catch (error) {
+      console.error('Error updating student score:', error);
+      toast.error(`Failed to apply action: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
     
     // Close the dialog
     setShowStudentActionDialog(false);
     setSelectedFace(null);
-  }, [selectedFace, students]);
+  }, [selectedFace, students, lectureId]);
+
+  // Handle student action selection in the student list
+  const handleStudentAction = async (actionValue: number, face: EnhancedFaceData) => {
+    if (!lectureId) return;
+    
+    const student = students?.find(s => s.id === face.person_id);
+    const displayName = student ? student.name : face.name || `Unknown (ID: ${face.person_id})`;
+    
+    const actionLabels = {
+      1: "Correct Answer (+10pts)",
+      2: "Attempted Answer (+5pts)",
+      3: "Penalize (-5pts)",
+      4: "Identify Student",
+      5: "Custom Points",
+      6: "View Profile"
+    };
+    
+    // Special handling for custom points (action 5)
+    let customPoints = 0;
+    if (actionValue === 5) {
+      const input = prompt("Enter custom points (positive or negative):", "0");
+      if (input === null) {
+        // User cancelled
+        return;
+      }
+      customPoints = parseInt(input, 10) || 0;
+    }
+    
+    try {
+      // Handle View Profile action
+      if (actionValue === 6 && student) {
+        // Fetch the full student data from the API
+        const response = await fetch(`/api/students/${student.id}?include=all`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch student details');
+        }
+        const studentData = await response.json();
+        setSelectedStudent(studentData);
+        setShowStudentDialog(true);
+        return;
+      }
+      
+      // Only update score for actions that affect points
+      if ([1, 2, 3, 5].includes(actionValue) && student) {
+        const response = await fetch('/api/student-scores', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            studentId: student.id,
+            lectureId,
+            actionType: actionValue,
+            customPoints: customPoints
+          }),
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to update student score');
+        }
+        
+        // Special message for custom points
+        const pointsMessage = actionValue === 5 ? 
+          `(${customPoints > 0 ? '+' : ''}${customPoints}pts)` : 
+          actionLabels[actionValue].match(/\([^)]+\)/)?.[0] || '';
+        
+        toast.success(`${actionLabels[actionValue].replace(/\([^)]+\)/, '')} for ${displayName} ${pointsMessage}`, {
+          description: `Student's score has been updated`
+        });
+      } else if (actionValue !== 6) {
+        // For non-scoring actions like View Profile
+        toast.info(`${actionLabels[actionValue]} for ${displayName}`, {
+          description: `Action applied successfully`
+        });
+      }
+    } catch (error) {
+      console.error('Error updating student score:', error);
+      toast.error(`Failed to apply action: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
 
   // Format duration for display
   const formatDuration = (minutes: number) => {
@@ -1557,26 +1708,10 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                           const displayEmail = student ? student.email : "No email available";
                           const displayAvatar = student?.avatar || "";
                           
-                          // Handle student action selection
-                          const handleStudentAction = (actionValue: number) => {
-                            const actionLabels = {
-                              1: "Correct Answer",
-                              2: "Attempted Answer",
-                              3: "Penalize",
-                              4: "Identify Student",
-                              5: "Custom Points",
-                              6: "View Profile"
-                            };
-                            
-                            toast.success(`${actionLabels[actionValue]} for ${displayName}`, {
-                              description: `Applied action: ${actionLabels[actionValue]}`
-                            });
-                          };
-                          
                           return (
                             <CircularDialogWidget 
                               key={face.person_id}
-                              onSelect={handleStudentAction}
+                              onSelect={(actionValue) => handleStudentAction(actionValue, face as EnhancedFaceData)}
                               trigger={
                                 <div className="p-3 hover:bg-gray-50 transition-colors cursor-pointer">
                                   <div className="flex items-center justify-between mb-2">
@@ -1930,6 +2065,13 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
           onClick={() => setShowStudentActionDialog(false)}
         />
       )}
+
+      {/* Add StudentDetailsDialog */}
+      <StudentDetailsDialog
+        student={selectedStudent}
+        open={showStudentDialog}
+        onOpenChange={setShowStudentDialog}
+      />
     </div>
   )
 }

@@ -1,7 +1,11 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { use } from "react";
 import { Metadata } from "next"
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { Trophy, Medal, Star, Flame, Target, Zap, Award, Crown, Sparkles, ChevronDown } from "lucide-react"
+import { Trophy, Medal, Star, Flame, Target, Zap, Award, Crown, Sparkles, ChevronDown, RefreshCw } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -14,6 +18,8 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { prisma } from "@/lib/prisma"
 import { loadCourses, type Course } from "@/lib/data"
 
@@ -35,181 +41,209 @@ interface StudentData {
 // Placeholder for the expected allStudents type
 let allStudents: StudentData[] = [];
 
-// Get course data from CSV or database
-async function getCourses() {
+// We need separate server functions for data fetching to use in client components
+// These will be called from the client component
+
+async function fetchCourses() {
   try {
-    // First try to get courses from database
-    const dbCourses = await prisma.course.findMany({
-      select: {
-        id: true,
-        name: true,
-        code: true,
-        description: true
-      }
-    });
-
-    if (dbCourses.length > 0) {
-      const courseMap: Record<string, { id: string; name: string; description: string }> = {
-        all: {
-          id: "all",
-          name: "All Courses",
-          description: "Top performing students across all courses",
-        }
-      };
-
-      dbCourses.forEach(course => {
-        const id = course.id.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-        courseMap[id] = {
-          id: course.id,
-          name: course.name,
-          description: `${course.code} - ${course.name}`,
-        };
-      });
-
-      return courseMap;
-    }
-
-    // Fallback to CSV courses if no DB courses
-    const courses = await loadCourses();
-    const courseMap: Record<string, { id: string; name: string; description: string }> = {
-      all: {
-        id: "all",
-        name: "All Courses",
-        description: "Top performing students across all courses",
-      }
-    };
-
-    courses.forEach(course => {
-      const id = course.id.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      courseMap[id] = {
-        id: course.id,
-        name: course.name,
-        description: `${course.code} - ${course.name}`,
-      };
-    });
-
-    return courseMap;
+    const response = await fetch('/api/courses');
+    if (!response.ok) throw new Error('Failed to fetch courses');
+    return await response.json();
   } catch (error) {
     console.error("Error loading courses:", error);
-    return {
-      all: {
-        id: "all",
-        name: "All Courses",
-        description: "Top performing students across all courses",
-      }
-    };
+    return [];
   }
 }
 
-// Get students by course - show all students from course in the leaderboard
-async function getStudentsByCourse(courseId: string, lectureId?: string): Promise<StudentData[]> {
+async function fetchStudentsByLecture(courseId: string, lectureId: string) {
   try {
-    // Find course by normalized ID
-    const courses = await prisma.course.findMany();
-    const course = courses.find(c => c.id.toLowerCase().replace(/[^a-z0-9]+/g, '-') === courseId);
-    
-    if (!course) {
-      return [];
-    }
-
-    // If we have a lectureId, only show students who were detected in this lecture
-    if (lectureId) {
-      // Get engagement records for this lecture
-      const engagementRecords = await prisma.studentEngagement.findMany({
-        where: {
-          lectureId: lectureId
-        },
-        include: {
-          student: true
-        }
-      });
-
-      // If no engagements yet, return empty array
-      if (engagementRecords.length === 0) {
-        return [];
-      }
-
-      // Map engagement records to student data
-      const students: StudentData[] = engagementRecords.map(record => {
-        return {
-          id: record.student.id,
-          name: record.student.name,
-          email: record.student.email,
-          avatar: record.student.avatar || `https://avatar.vercel.sh/${record.student.id}`,
-          score: record.focusScore, // Use actual focus score from engagement
-          level: Math.floor(record.attentionDuration / 60) + 1, // Level based on attention time in minutes
-          badges: [
-            record.engagementLevel.charAt(0).toUpperCase() + record.engagementLevel.slice(1), // Capitalize first letter
-            record.handRaisedCount > 0 ? "Active Participant" : "Viewer"
-          ],
-          course: course.name,
-          grade: record.focusScore >= 80 ? "A" : 
-                 record.focusScore >= 70 ? "B" : 
-                 record.focusScore >= 60 ? "C" : 
-                 record.focusScore >= 50 ? "D" : "F",
-          streak: Math.min(record.attentionDuration / 30, 10), // Streak based on attention time (max 10)
-          progress: Math.min(record.attentionDuration / 3, 100) // Progress percentage based on attention time
-        };
-      });
-
-      // Sort by score (descending)
-      return students.sort((a, b) => b.score - a.score);
-    }
-    
-    // Otherwise, get all enrollments for this course (default behavior)
-    const enrollments = await prisma.studentEnrollment.findMany({
-      where: {
-        courseId: course.id
-      },
-      include: {
-        student: true
-      }
+    const response = await fetch(`/api/leaderboard?courseId=${courseId}&lectureId=${lectureId}`, {
+      cache: 'no-store' // Don't cache to ensure fresh data on each request
     });
-
-    // Map enrollments to the expected student data format
-    const students: StudentData[] = enrollments.map(enrollment => {
-      return {
-        id: enrollment.student.id,
-        name: enrollment.student.name,
-        email: enrollment.student.email,
-        avatar: enrollment.student.avatar || `https://avatar.vercel.sh/${enrollment.student.id}`,
-        score: Math.floor(Math.random() * 1000), // placeholder score for now
-        level: Math.floor(Math.random() * 10) + 1, // placeholder level
-        badges: ["Active", "Engaged"], // placeholder badges
-        course: course.name,
-        grade: ["A", "B", "C", "A-", "B+"][Math.floor(Math.random() * 5)], // placeholder grade
-        streak: Math.floor(Math.random() * 10), // placeholder streak
-        progress: Math.floor(Math.random() * 100) // placeholder progress
-      };
-    });
-
-    // Sort by score (descending)
-    return students.sort((a, b) => b.score - a.score);
+    
+    if (!response.ok) throw new Error('Failed to fetch students');
+    return await response.json();
   } catch (error) {
     console.error("Error fetching students:", error);
     return [];
   }
 }
 
-export async function generateMetadata({ params }: { params: { course: string } }): Promise<Metadata> {
-  const courses = await getCourses();
-  const course = courses[params.course];
-  if (!course) return {};
-
-  return {
-    title: `${course.name} Leaderboard`,
-    description: course.description,
-    openGraph: {
-      title: `${course.name} Leaderboard`,
-      description: course.description,
-      type: "website",
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: `${course.name} Leaderboard`,
-      description: course.description,
-    },
+// Client component for the leaderboard
+export default function CourseLeaderboardPage({ 
+  params, 
+  searchParams 
+}: { 
+  params: Promise<{ course: string }>;
+  searchParams: Promise<{ lecture?: string }>;
+}) {
+  const [courseData, setCourseData] = useState<any>(null);
+  const [students, setStudents] = useState<StudentData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(5000); // 5 seconds default
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [refreshing, setRefreshing] = useState(false);
+  
+  const unwrappedParams = use(params);
+  const unwrappedSearchParams = use(searchParams);
+  const courseId = unwrappedParams.course;
+  const lectureId = unwrappedSearchParams.lecture;
+  
+  // Function to fetch leaderboard data
+  const fetchLeaderboardData = useCallback(async () => {
+    if (!courseId) return;
+    
+    try {
+      setRefreshing(true);
+      
+      // Fetch course data first
+      if (!courseData) {
+        const courses = await fetchCourses();
+        const course = courses.find((c: any) => 
+          c.id.toLowerCase().replace(/[^a-z0-9]+/g, '-') === courseId
+        );
+        if (course) setCourseData(course);
+      }
+      
+      // Fetch students data
+      if (lectureId) {
+        const studentsData = await fetchStudentsByLecture(courseId, lectureId);
+        setStudents(studentsData);
+      }
+      
+      setLastUpdated(new Date());
+    } catch (error) {
+      console.error("Error refreshing leaderboard:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [courseId, lectureId, courseData]);
+  
+  // Initial data load
+  useEffect(() => {
+    fetchLeaderboardData();
+  }, [fetchLeaderboardData]);
+  
+  // Setup auto-refresh
+  useEffect(() => {
+    if (!autoRefresh) return;
+    
+    const intervalId = setInterval(() => {
+      fetchLeaderboardData();
+    }, refreshInterval);
+    
+    return () => clearInterval(intervalId);
+  }, [autoRefresh, refreshInterval, fetchLeaderboardData]);
+  
+  // Manual refresh handler
+  const handleManualRefresh = () => {
+    fetchLeaderboardData();
+  };
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center">
+          <RefreshCw className="h-8 w-8 text-primary animate-spin mb-4" />
+          <p>Loading leaderboard...</p>
+        </div>
+      </div>
+    );
   }
+  
+  if (!courseData) notFound();
+  
+  const hasStudents = students && students.length > 0;
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto max-w-7xl">
+        <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+                {courseData.name} Leaderboard
+              </h2>
+              <p className="text-muted-foreground">
+                {courseData.description}
+              </p>
+              {lectureId && (
+                <div className="mt-2">
+                  <Badge variant="outline" className="text-sm">
+                    Active Lecture
+                  </Badge>
+                </div>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <div className="flex items-center space-x-2 text-sm">
+                <Switch
+                  id="auto-refresh"
+                  checked={autoRefresh}
+                  onCheckedChange={setAutoRefresh}
+                />
+                <Label htmlFor="auto-refresh">Auto-refresh</Label>
+              </div>
+              
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleManualRefresh}
+                disabled={refreshing}
+                className={refreshing ? "animate-pulse" : ""}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            </div>
+          </div>
+
+          <Card className="border-primary/20">
+            <CardContent className="pt-6">
+              {hasStudents ? (
+                <>
+                  <div className="flex justify-between items-center mb-4">
+                    <div className="text-sm text-muted-foreground">
+                      Last updated: {lastUpdated.toLocaleTimeString()}
+                    </div>
+                    <div className="text-sm font-medium">
+                      {students.length} students on the leaderboard
+                    </div>
+                  </div>
+                  
+                  <TopThree students={students.slice(0, 3)} />
+                  <LeaderboardList students={students.slice(3)} />
+                </>
+              ) : (
+                <div className="py-12 text-center">
+                  <Trophy className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+                  <h3 className="text-lg font-medium mb-2">No Students Detected</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto">
+                    {lectureId 
+                      ? "No students have been detected in this lecture yet. Students will appear on the leaderboard once they are detected by the camera."
+                      : "There are no students enrolled in this course yet."
+                    }
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="text-center text-sm text-muted-foreground">
+            <p>Want to join the leaderboard? Sign up for our courses!</p>
+            <Link href="/courses" className="inline-flex">
+              <Button variant="link" size="sm" className="hover:underline">
+                Learn More
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function TopThree({ students }: { students: StudentData[] }) {
@@ -399,78 +433,6 @@ function LeaderboardList({ students }: { students: StudentData[] }) {
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">
           Showing {students.length} students
-        </div>
-      </div>
-    </div>
-  )
-}
-
-export default async function CourseLeaderboardPage({ params, searchParams }: { 
-  params: { course: string };
-  searchParams: { lecture?: string }
-}) {
-  const courses = await getCourses();
-  const course = courses[params.course];
-  if (!course) notFound();
-
-  // Get any lecture ID from the URL if present
-  const lectureId = searchParams.lecture;
-  
-  // Get all students for this course
-  const students = await getStudentsByCourse(params.course, lectureId);
-  allStudents = students; // Set reference for other components
-  const hasStudents = students && students.length > 0;
-
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-7xl">
-        <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-              {course.name} Leaderboard
-            </h2>
-            <p className="text-muted-foreground">
-              {course.description}
-            </p>
-            {lectureId && (
-              <div className="mt-2">
-                <Badge variant="outline" className="text-sm">
-                  Active Lecture
-                </Badge>
-              </div>
-            )}
-          </div>
-
-          <Card className="border-primary/20">
-            <CardContent className="pt-6">
-              {hasStudents ? (
-                <>
-                  <TopThree students={students.slice(0, 3)} />
-                  <LeaderboardList students={students.slice(3)} />
-                </>
-              ) : (
-                <div className="py-12 text-center">
-                  <Trophy className="h-12 w-12 mx-auto text-gray-300 mb-4" />
-                  <h3 className="text-lg font-medium mb-2">No Students Detected</h3>
-                  <p className="text-muted-foreground max-w-md mx-auto">
-                    {lectureId 
-                      ? "No students have been detected in this lecture yet. Students will appear on the leaderboard once they are detected by the camera."
-                      : "There are no students enrolled in this course yet."
-                    }
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="text-center text-sm text-muted-foreground">
-            <p>Want to join the leaderboard? Sign up for our courses!</p>
-            <Link href="/courses" className="inline-flex">
-              <Button variant="link" size="sm" className="hover:underline">
-                Learn More
-              </Button>
-            </Link>
-          </div>
         </div>
       </div>
     </div>
