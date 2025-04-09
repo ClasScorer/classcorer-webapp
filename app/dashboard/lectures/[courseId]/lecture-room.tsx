@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Camera, Presentation, Mic, MicOff, Video, VideoOff, Share2, MessageSquare, X, Play, Square, Save, ScreenShare, Send, Ghost, Bug, MonitorIcon } from "lucide-react"
+import { Camera, Presentation, Mic, MicOff, Video, VideoOff, Share2, MessageSquare, X, Play, Square, Save, ScreenShare, Send, Ghost, Bug, MonitorIcon, Trophy } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Course, Student } from "@/lib/data"
@@ -22,6 +22,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { CircularDialogWidget } from "@/app/components/CircularDialogWidget"
+import Link from "next/link"
 
 // Add Google API types
 interface GoogleSlide {
@@ -305,6 +306,43 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       startStopwatch();
       
       toast.success("Lecture started successfully");
+      
+      // Generate leaderboard link
+      const courseIdParam = course.id.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const leaderboardUrl = `${window.location.origin}/leaderboard/${courseIdParam}?lecture=${data.id}`;
+      
+      // Show toast with leaderboard link
+      toast.success(
+        <div className="flex flex-col gap-2">
+          <span>Leaderboard available:</span>
+          <div className="flex items-center gap-2">
+            <input 
+              type="text" 
+              value={leaderboardUrl} 
+              readOnly 
+              className="w-full text-xs p-2 rounded border text-gray-900 bg-gray-100"
+            />
+            <Button 
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                navigator.clipboard.writeText(leaderboardUrl);
+                toast.success("Leaderboard link copied to clipboard!");
+              }}
+              className="whitespace-nowrap"
+            >
+              Copy
+            </Button>
+          </div>
+          <Link href={leaderboardUrl} target="_blank" className="text-sm text-blue-600 hover:underline">
+            Open Leaderboard
+          </Link>
+        </div>,
+        {
+          duration: 10000,
+          description: "Share this link with your students to display the leaderboard"
+        }
+      );
       
       // Start detection if video is on
       if (isVideoOn) {
@@ -1345,6 +1383,20 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                     >
                       <Bug className="mr-2 h-4 w-4" />
                       Simulate
+                    </Button>
+                    
+                    {/* Add leaderboard button */}
+                    <Button
+                      variant="secondary"
+                      className="w-full"
+                      onClick={() => {
+                        const courseIdParam = course.id.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+                        const leaderboardUrl = `${window.location.origin}/leaderboard/${courseIdParam}?lecture=${lectureId}`;
+                        window.open(leaderboardUrl, '_blank');
+                      }}
+                    >
+                      <Trophy className="mr-2 h-4 w-4" />
+                      Leaderboard
                     </Button>
                   </div>
                   
