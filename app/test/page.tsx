@@ -10,10 +10,9 @@ export default function TestPage() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-purple-50 to-white text-purple-900">
-      <h1 className="text-2xl font-bold mb-8">Circular Dialog Widget</h1>
       
       <div className="p-8 border border-purple-200 rounded-lg bg-white/70 shadow-xl flex flex-col items-center">
-        <h2 className="text-lg mb-6">Click the button to open the circular menu</h2>
+        <h2 className="text-lg mb-6">Test the menu</h2>
         
         <CircularDialogWidget 
           onSelect={handleSelectSegment} 
@@ -23,10 +22,6 @@ export default function TestPage() {
             </Button>
           }
         />
-        
-        <p className="mt-6 text-purple-500 text-sm">
-          When the circular menu appears, click on any segment to select it
-        </p>
       </div>
     </div>
   );
