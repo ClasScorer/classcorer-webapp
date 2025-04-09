@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Camera, RefreshCw, Maximize2 } from "lucide-react";
-import type { CameraViewProps } from "@/types";
+import type { CameraViewProps } from "../types";
 
 export function CameraView({ isEditing, onSave, currentDeadzone }: CameraViewProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -29,8 +29,6 @@ export function CameraView({ isEditing, onSave, currentDeadzone }: CameraViewPro
     } else {
       stopCamera();
     }
-  
-    // Cleanup on component unmount
     return () => {
       stopCamera();
     };
@@ -94,40 +92,38 @@ export function CameraView({ isEditing, onSave, currentDeadzone }: CameraViewPro
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawing || !isEditing) return;
-  
+
     const coords = getCanvasCoordinates(e);
     setCurrentPos(coords);
-  
-    drawDeadzone(); // Update the canvas with the current rectangle and saved deadzones
+    drawDeadzone();
   };
-
 
   const handleMouseUp = () => {
     if (!isEditing) return;
     setIsDrawing(false);
     setShowPreview(true);
-  
+
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
-  
+
     if (canvas && ctx && originalImage) {
       const img = new Image();
       img.src = originalImage;
-  
+
       img.onload = () => {
         const modifiedCanvas = document.createElement("canvas");
         const modifiedCtx = modifiedCanvas.getContext("2d");
-  
+
         if (!modifiedCtx) return;
-  
+
         modifiedCanvas.width = canvas.width;
         modifiedCanvas.height = canvas.height;
-  
+
         modifiedCtx.drawImage(img, 0, 0);
-  
+
         const { x, y, width, height } = selectionDimensions;
         modifiedCtx.clearRect(x, y, width, height);
-  
+
         setModifiedImage(modifiedCanvas.toDataURL("image/jpeg"));
       };
     }
@@ -137,42 +133,22 @@ export function CameraView({ isEditing, onSave, currentDeadzone }: CameraViewPro
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
-  
-    // Clear the canvas
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
-    // Draw saved deadzones
-    if (currentDeadzone?.coordinates) {
-      ctx.strokeStyle = "blue"; // Use a different color for saved deadzones
-      ctx.lineWidth = 2;
-      currentDeadzone.coordinates.forEach(({ x, y, width, height }) => {
-        ctx.strokeRect(x, y, width, height);
-      });
-    }
-  
-    // Draw the currently drawn rectangle (only when editing)
-    if (isEditing && isDrawing) {
-      ctx.strokeStyle = "red"; // Use red for the currently drawn rectangle
-      ctx.lineWidth = 2;
-      ctx.strokeRect(
-        selectionDimensions.x,
-        selectionDimensions.y,
-        selectionDimensions.width,
-        selectionDimensions.height
-      );
-    }
+
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(
+      selectionDimensions.x,
+      selectionDimensions.y,
+      selectionDimensions.width,
+      selectionDimensions.height
+    );
   };
 
   const handleSave = () => {
     const deadzone = {
-      coordinates: [
-        {
-          x: selectionDimensions.x,
-          y: selectionDimensions.y,
-          width: selectionDimensions.width,
-          height: selectionDimensions.height,
-        },
-      ],
+      coordinates: selectionDimensions,
       originalImage,
       modifiedImage,
     };
@@ -240,30 +216,6 @@ export function CameraView({ isEditing, onSave, currentDeadzone }: CameraViewPro
     </div>
   );
 
-  const updateLivePreview = () => {
-    if (!originalImage) return;
-  
-    const img = new Image();
-    img.src = originalImage;
-  
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = 640;
-      canvas.height = 480;
-      const ctx = canvas.getContext("2d");
-  
-      if (!ctx) return;
-  
-      ctx.drawImage(img, 0, 0);
-  
-      const { x, y, width, height } = selectionDimensions;
-      ctx.fillStyle = "black";
-      ctx.fillRect(x, y, width, height);
-  
-      setModifiedImage(canvas.toDataURL("image/jpeg"));
-    };
-  };
-
   return (
     <div className="space-y-6">
       <Card className="p-4">
@@ -293,13 +245,13 @@ export function CameraView({ isEditing, onSave, currentDeadzone }: CameraViewPro
         )}
 
         {/* Show current selection info while editing */}
-        {isEditing && currentDeadzone && (
+        {isEditing && (startPos.x !== 0 || startPos.y !== 0 || currentPos.x !== 0 || currentPos.y !== 0) && (
           <div className="mt-4">
             <div className="flex items-center gap-2 mb-2">
               <Maximize2 className="h-4 w-4" />
-              <span className="font-medium">Saved Deadzone</span>
+              <span className="font-medium">Current Selection</span>
             </div>
-            <DeadzoneInfo coordinates={currentDeadzone.coordinates[0]} />
+            <DeadzoneInfo coordinates={selectionDimensions} />
           </div>
         )}
 
@@ -310,7 +262,7 @@ export function CameraView({ isEditing, onSave, currentDeadzone }: CameraViewPro
               <Maximize2 className="h-4 w-4" />
               <span className="font-medium">Saved Deadzone</span>
             </div>
-            <DeadzoneInfo coordinates={currentDeadzone.coordinates[0]} />
+            <DeadzoneInfo coordinates={currentDeadzone.coordinates} />
           </div>
         )}
       </Card>
