@@ -12,6 +12,8 @@ import { motion, AnimatePresence, useAnimation } from "framer-motion";
 interface CircularDialogWidgetProps {
   onSelect?: (segmentIndex: number) => void;
   trigger?: React.ReactNode;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 // Define classroom action options outside component to prevent recreation
@@ -66,9 +68,21 @@ const T = 0.3; // Faster timing
 
 export function CircularDialogWidget({ 
   onSelect, 
-  trigger = <Button className="bg-purple-600 hover:bg-purple-700">Choose Action</Button> 
+  trigger = <Button className="bg-purple-600 hover:bg-purple-700">Choose Action</Button>,
+  isOpen,
+  onOpenChange
 }: CircularDialogWidgetProps) {
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isInternalDialogOpen, setIsInternalDialogOpen] = useState(false);
+  
+  // Determine if dialog is controlled externally or internally
+  const isDialogOpen = isOpen !== undefined ? isOpen : isInternalDialogOpen;
+  const setIsDialogOpen = (open: boolean) => {
+    setIsInternalDialogOpen(open);
+    if (onOpenChange) {
+      onOpenChange(open);
+    }
+  };
+  
   const [hoveredSegment, setHoveredSegment] = useState<number | null>(null);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');

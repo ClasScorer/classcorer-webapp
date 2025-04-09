@@ -21,6 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { CircularDialogWidget } from "@/app/components/CircularDialogWidget"
 
 // Add Google API types
 interface GoogleSlide {
@@ -156,7 +157,7 @@ interface AttentionMetrics {
   focusScore: number
   focusDuration: number
   distractionCount: number
-  engagementLevel: 'high' | 'medium' | 'low'
+  engagementLevel: 'high' | 'medium' | 'low' | string
 }
 
 interface EnhancedFaceData extends FaceData {
@@ -224,6 +225,11 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   const [lectureToDelete, setLectureToDelete] = useState<string | null>(null)
   const [isDeletingLecture, setIsDeletingLecture] = useState(false)
 
+  // Add state for student action dialog
+  const [showStudentActionDialog, setShowStudentActionDialog] = useState(false);
+  const [selectedFace, setSelectedFace] = useState<EnhancedFaceData | null>(null);
+  const [dialogPosition, setDialogPosition] = useState({ x: 0, y: 0 });
+  
   // Refs for media elements
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -1054,7 +1060,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     toast.success("Simulated detection data generated");
   };
 
-  // Add this new function to handle canvas clicks on face boxes
+  // Modified canvas click handler to show CircularDialogWidget
   const handleCanvasClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!faceData || !displayCanvasRef.current || !videoRef.current) return;
     
@@ -1094,22 +1100,29 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
           if (students && students.length > 0) {
             const student = students.find(s => s.id === face.person_id);
             if (student) {
-              toast.info(`${student.name} - ${face.attention_status}`, {
-                description: face.hand_raising_status.is_hand_raised ? 
-                  "Hand is raised" : 
-                  `Focus score: ${(face as EnhancedFaceData).attentionMetrics?.focusScore || 0}%`
-              });
+              // Instead of showing toast, store face data and show dialog
+              setSelectedFace(face as EnhancedFaceData);
+              
+              // Calculate a good position for the dialog - convert back to screen coordinates
+              // Position it near the face but not covering it
+              const dialogX = (pixelX + pixelWidth/2) / scaleX;
+              const dialogY = (pixelY + pixelHeight + 20) / scaleY; // 20px below the face
+              
+              setDialogPosition({ x: dialogX + rect.left, y: dialogY + rect.top });
+              setShowStudentActionDialog(true);
               return;
             }
           }
-          // If student not found or no students array
-          toast.info(`Student ID: ${face.person_id}`, {
-            description: face.hand_raising_status.is_hand_raised ? 
-              "Hand is raised" : 
-              `Focus score: ${(face as EnhancedFaceData).attentionMetrics?.focusScore || 0}%`
-          });
+          
+          // Handle case when student isn't found
+          setSelectedFace(face as EnhancedFaceData);
+          const dialogX = (pixelX + pixelWidth/2) / scaleX;
+          const dialogY = (pixelY + pixelHeight + 20) / scaleY;
+          setDialogPosition({ x: dialogX + rect.left, y: dialogY + rect.top });
+          setShowStudentActionDialog(true);
           return;
         } else {
+          // For unknown faces, show toast notification
           toast.info("Unrecognized Student", {
             description: "This student hasn't been identified yet"
           });
@@ -1118,6 +1131,31 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       }
     }
   }, [faceData, students]);
+
+  // Function to handle student action selection from dialog
+  const handleCanvasStudentAction = useCallback((actionValue: number) => {
+    if (!selectedFace) return;
+    
+    const student = students?.find(s => s.id === selectedFace.person_id);
+    const displayName = student ? student.name : selectedFace.name || `Unknown (ID: ${selectedFace.person_id})`;
+    
+    const actionLabels = {
+      1: "Correct Answer",
+      2: "Attempted Answer",
+      3: "Penalize",
+      4: "Identify Student",
+      5: "Custom Points",
+      6: "View Profile"
+    };
+    
+    toast.success(`${actionLabels[actionValue]} for ${displayName}`, {
+      description: `Applied action: ${actionLabels[actionValue]}`
+    });
+    
+    // Close the dialog
+    setShowStudentActionDialog(false);
+    setSelectedFace(null);
+  }, [selectedFace, students]);
 
   // Format duration for display
   const formatDuration = (minutes: number) => {
@@ -1467,53 +1505,75 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                           const displayEmail = student ? student.email : "No email available";
                           const displayAvatar = student?.avatar || "";
                           
+                          // Handle student action selection
+                          const handleStudentAction = (actionValue: number) => {
+                            const actionLabels = {
+                              1: "Correct Answer",
+                              2: "Attempted Answer",
+                              3: "Penalize",
+                              4: "Identify Student",
+                              5: "Custom Points",
+                              6: "View Profile"
+                            };
+                            
+                            toast.success(`${actionLabels[actionValue]} for ${displayName}`, {
+                              description: `Applied action: ${actionLabels[actionValue]}`
+                            });
+                          };
+                          
                           return (
-                            <div key={face.person_id} className="p-3 hover:bg-gray-50 transition-colors">
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-3">
-                                  <Avatar>
-                                    <AvatarImage src={displayAvatar} alt={displayName} />
-                                    <AvatarFallback>{displayName.substring(0, 2).toUpperCase()}</AvatarFallback>
-                                  </Avatar>
-                                  <div>
-                                    <p className="font-medium">{displayName}</p>
-                                    <p className="text-xs text-gray-500">{displayEmail}</p>
+                            <CircularDialogWidget 
+                              key={face.person_id}
+                              onSelect={handleStudentAction}
+                              trigger={
+                                <div className="p-3 hover:bg-gray-50 transition-colors cursor-pointer">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-3">
+                                      <Avatar>
+                                        <AvatarImage src={displayAvatar} alt={displayName} />
+                                        <AvatarFallback>{displayName.substring(0, 2).toUpperCase()}</AvatarFallback>
+                                      </Avatar>
+                                      <div>
+                                        <p className="font-medium">{displayName}</p>
+                                        <p className="text-xs text-gray-500">{displayEmail}</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <Badge variant={face.attention_status === "focused" ? "default" : "destructive"}>
+                                        {face.attention_status}
+                                      </Badge>
+                                      {face.hand_raising_status.is_hand_raised && (
+                                        <Badge variant="outline" className="bg-yellow-50">
+                                          Hand Raised
+                                        </Badge>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                                <div className="flex gap-2">
-                                  <Badge variant={face.attention_status === "focused" ? "default" : "destructive"}>
-                                    {face.attention_status}
-                                  </Badge>
-                                  {face.hand_raising_status.is_hand_raised && (
-                                    <Badge variant="outline" className="bg-yellow-50">
-                                      Hand Raised
-                                    </Badge>
+                                  
+                                  {/* Enhanced metrics */}
+                                  {(face as EnhancedFaceData).attentionMetrics && (
+                                    <div className="grid grid-cols-4 gap-2 mt-1 text-xs">
+                                      <div className="bg-gray-50 p-1 rounded text-center">
+                                        <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.focusScore}%</div>
+                                        <div className="text-gray-500">Focus</div>
+                                      </div>
+                                      <div className="bg-gray-50 p-1 rounded text-center">
+                                        <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.focusDuration}s</div>
+                                        <div className="text-gray-500">Duration</div>
+                                      </div>
+                                      <div className="bg-gray-50 p-1 rounded text-center">
+                                        <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.distractionCount}</div>
+                                        <div className="text-gray-500">Distractions</div>
+                                      </div>
+                                      <div className="bg-gray-50 p-1 rounded text-center">
+                                        <div className="font-medium capitalize">{(face as EnhancedFaceData).attentionMetrics?.engagementLevel}</div>
+                                        <div className="text-gray-500">Engagement</div>
+                                      </div>
+                                    </div>
                                   )}
                                 </div>
-                              </div>
-                              
-                              {/* Enhanced metrics */}
-                              {(face as EnhancedFaceData).attentionMetrics && (
-                                <div className="grid grid-cols-4 gap-2 mt-1 text-xs">
-                                  <div className="bg-gray-50 p-1 rounded text-center">
-                                    <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.focusScore}%</div>
-                                    <div className="text-gray-500">Focus</div>
-                                  </div>
-                                  <div className="bg-gray-50 p-1 rounded text-center">
-                                    <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.focusDuration}s</div>
-                                    <div className="text-gray-500">Duration</div>
-                                  </div>
-                                  <div className="bg-gray-50 p-1 rounded text-center">
-                                    <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.distractionCount}</div>
-                                    <div className="text-gray-500">Distractions</div>
-                                  </div>
-                                  <div className="bg-gray-50 p-1 rounded text-center">
-                                    <div className="font-medium capitalize">{(face as EnhancedFaceData).attentionMetrics?.engagementLevel}</div>
-                                    <div className="text-gray-500">Engagement</div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
+                              }
+                            />
                           );
                         })}
                         
@@ -1786,6 +1846,38 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Add the positioned dialog for canvas clicks */}
+      {selectedFace && (
+        <div 
+          className="fixed z-50"
+          style={{ 
+            position: 'fixed',
+            left: `${dialogPosition.x}px`,
+            top: `${dialogPosition.y}px`,
+            transform: 'translate(-50%, 0)',
+          }}
+        >
+          <CircularDialogWidget
+            onSelect={handleCanvasStudentAction}
+            isOpen={showStudentActionDialog}
+            onOpenChange={(open) => {
+              if (!open) setShowStudentActionDialog(false);
+            }}
+            trigger={
+              <div className="absolute -top-10 -left-10 w-1 h-1 opacity-0" />
+            }
+          />
+        </div>
+      )}
+
+      {/* Click overlay to close dialog */}
+      {showStudentActionDialog && (
+        <div 
+          className="fixed inset-0 z-40" 
+          onClick={() => setShowStudentActionDialog(false)}
+        />
+      )}
     </div>
   )
 }
