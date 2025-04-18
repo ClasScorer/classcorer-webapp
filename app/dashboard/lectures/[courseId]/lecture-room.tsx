@@ -112,7 +112,7 @@ interface BoundingBox {
 
 interface FaceData {
   person_id: string
-  recognition_status: "new" | "known"
+  recognition_status: "new" | "known" | "found" | "unknown"
   // Allow both uppercase and lowercase versions
   attention_status: "focused" | "unfocused" | "FOCUSED" | "UNFOCUSED"
   hand_raising_status: HandRaising
@@ -556,28 +556,77 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       }
 
       const video = videoRef.current;
+      
+      // Make sure video is playing and has dimensions
+      if (video.videoWidth === 0 || video.videoHeight === 0 || video.paused || video.ended) {
+        console.warn("Video not ready or not playing", {
+          videoWidth: video.videoWidth,
+          videoHeight: video.videoHeight,
+          paused: video.paused,
+          ended: video.ended
+        });
+        // Try to restart the video if needed
+        video.play().catch(err => console.error("Error playing video:", err));
+        reject(new Error("Video not ready or not playing"));
+        return;
+      }
+      
+      console.log("Capturing frame with dimensions:", video.videoWidth, "x", video.videoHeight);
+      
+      // Set canvas dimensions to match video
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext('2d', { alpha: false });
       if (!ctx) {
         reject(new Error("Canvas context not available"));
         return;
       }
       
-      // Draw the current video frame to the hidden canvas
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // Ensure canvas is reset
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      // Convert the canvas to a blob
-      canvas.toBlob((blob) => {
-        if (blob) {
-          resolve(blob);
-        } else {
-          reject(new Error("Failed to create blob from canvas"));
+      // Draw the current video frame to the hidden canvas
+      try {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // Debug: log if the canvas is empty/black
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        let isBlack = true;
+        // Check a sampling of pixels to see if the frame is entirely black
+        for (let i = 0; i < data.length; i += 40) {
+          if (data[i] > 10 || data[i + 1] > 10 || data[i + 2] > 10) {
+            isBlack = false;
+            break;
+          }
         }
-      }, 'image/jpeg', 0.8); // JPEG at 80% quality
+        
+        if (isBlack) {
+          console.warn("Captured frame appears to be black - this may indicate a problem with the video stream");
+        }
+        
+        // Convert the canvas to a blob
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              console.log(`Successfully created blob: ${blob.size} bytes`);
+              resolve(blob);
+            } else {
+              reject(new Error("Failed to create blob from canvas"));
+            }
+          },
+          'image/jpeg',
+          0.85
+        ); // JPEG at 85% quality
+      } catch (err) {
+        console.error("Error drawing video to canvas:", err);
+        reject(new Error(`Drawing error: ${err.message}`));
+      }
     });
   };
+
   const normalizeCoordinates = (box: BoundingBox): BoundingBox => {
     // If coordinates already appear to be normalized (between 0-1), return as is
     if (box.x <= 1 && box.y <= 1 && box.width <= 1 && box.height <= 1) {
@@ -597,6 +646,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     };
   };
 
+  // Enhance the API response with UI-specific data
   const enhanceApiResponse = (data: FaceDetectionResponse): EnhancedFaceDetectionResponse => {
     // Enhanced faces with additional metrics
     const enhancedFaces = data.faces.map(face => {
@@ -604,25 +654,37 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       const student = students.find(s => s.id.toString() === face.person_id);
       
       // Normalize bounding box coordinates if they are in pixel values
-      // Assuming the video dimensions are available (if not, you'll need another approach)
       const normalizedBoundingBox = normalizeCoordinates(face.bounding_box);
+      
+      // Map recognition status from backend to frontend expected values
+      // Backend uses "found" but frontend expects "known"
+      const mappedRecognitionStatus = face.recognition_status === "found" ? "known" : face.recognition_status;
+      
+      // Determine engagement level based on attention status
+      const engagementLevel: 'high' | 'medium' | 'low' = 
+        face.attention_status === "FOCUSED" ? 'high' : 'low';
       
       // Generate the additional metrics that the UI expects
       return {
         ...face,
+        // Map recognition status
+        recognition_status: mappedRecognitionStatus as "new" | "known" | "unknown",
         // Ensure correct case for attention_status (API uses uppercase)
         attention_status: face.attention_status.toLowerCase() as "focused" | "unfocused",
         // Add name if we found a matching student
         name: student?.name || "Unknown Person",
         bounding_box: normalizedBoundingBox,
-        // Add additional metrics needed for UI display
+        // Add additional metrics needed for UI display with proper typing
         attentionMetrics: {
           focusScore: face.attention_status === "FOCUSED" ? 85 : 30,
-          focusDuration: Math.round(Math.random() * 60), // Placeholder until API provides this
+          focusDuration: Math.round(Math.random() * 60), 
           distractionCount: face.attention_status === "FOCUSED" ? 1 : 4,
-          engagementLevel: face.attention_status === "FOCUSED" ? 'high' : 'low'
+          engagementLevel: engagementLevel
         },
         lastDetectedAt: new Date().toISOString(),
+        // Add UI-specific properties
+        highlight: false,
+        infoVisible: false
       };
     });
   
@@ -649,24 +711,32 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   const sendFrameToAPI = async (frameBlob: Blob) => {
     if (!lectureId) return null;
     
+    // Create a precise timestamp for this frame
+    const frameTimestamp = new Date().toISOString();
+    
     const formData = new FormData();
     formData.append('image', frameBlob);
     formData.append('lectureId', lectureId);
-    formData.append('timestamp', new Date().toISOString());
+    formData.append('timestamp', frameTimestamp);
     
     try {
-      // Replace with your actual API endpoint
-      const response = await fetch('/api/process-image', {
+      // Use the correct API endpoint that matches the gateway
+      const response = await fetch('/api/process-frame', {
         method: 'POST',
         body: formData,
       });
       
       if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
       }
       
       // Get the base response data
       const data: FaceDetectionResponse = await response.json();
+      
+      // Ensure the timestamp matches our request
+      if (data.timestamp !== frameTimestamp) {
+        console.warn(`Timestamp mismatch: sent ${frameTimestamp}, received ${data.timestamp}`);
+      }
       
       // Transform the API response into the enhanced format
       const enhancedData = enhanceApiResponse(data);
@@ -680,6 +750,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       return data;
     } catch (error) {
       console.error('Error sending frame to API:', error);
+      toast.error(`Detection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return null;
     }
   };
@@ -707,7 +778,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
 
   // Enhanced function to process face detection with more metrics
   const processFaceDetectionResults = (data: FaceDetectionResponse) => {
-    if (!data || !data.faces || data.faces.length === 0) return;
+    if (!data || !data.faces || !(data.faces.length === 0)) return;
     
     // Add enhanced metrics to face data
     const enhancedFaces: EnhancedFaceData[] = data.faces.map(face => {
@@ -754,7 +825,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     const updatedAttendance = {...attendanceData};
     
     enhancedData.faces.forEach(face => {
-      if (face.recognition_status === "known") {
+      if (face.recognition_status === "known" || face.recognition_status === "found") {
         const studentId = face.person_id;
         
         // Find the corresponding student
@@ -1429,9 +1500,9 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                       <div className="text-sm font-medium mb-3">Engagement Trend</div>
                       {faceData.timeSeries && faceData.timeSeries.length > 0 ? (
                         <div className="h-40 flex items-end space-x-1">
-                          {faceData.timeSeries.map((point, i) => (
+                          {faceData.timeSeries.map((point, index) => (
                             <div   
-                              key={i}
+                              key={`trend-point-${index}-${point.timestamp}`} 
                               className="bg-blue-500 w-full rounded-t"
                               style={{ 
                                 height: `${Math.max(5, point.focusedPercentage)}%`,
@@ -1456,7 +1527,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                         Detected Students
                       </div>
                       <div className="divide-y max-h-60 overflow-y-auto p-0">
-                        {faceData.faces.filter(face => face.recognition_status === "known").map((face) => {
+                        {faceData.faces.filter(face => face.recognition_status === "known").map((face, index) => {
                           // Find the student, accounting for possible empty students array
                           const student = students && students.length > 0
                             ? students.find(s => s.id === face.person_id)
@@ -1468,7 +1539,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                           const displayAvatar = student?.avatar || "";
                           
                           return (
-                            <div key={face.person_id} className="p-3 hover:bg-gray-50 transition-colors">
+                            <div key={`student-${face.person_id}-${index}`} className="p-3 hover:bg-gray-50 transition-colors">
                               <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-3">
                                   <Avatar>
@@ -1625,7 +1696,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                   <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
                     {presentationData.slides.map((slide, index) => (
                       <div
-                        key={slide.id}
+                        key={`slide-${slide.id}-${index}`}
                         className={`rounded-md overflow-hidden border-2 cursor-pointer transition-all ${index === activeSlideIndex ? 'border-primary' : 'border-transparent'}`}
                         onClick={() => changeSlide(index)}
                       >
@@ -1702,7 +1773,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                   ) : (
                     messages.map((message, index) => (
                       <div 
-                        key={index}
+                        key={`message-${index}`}
                         className={`flex gap-3 ${message.student.id === 'professor' ? 'justify-end' : ''}`}
                       >
                         {message.student.id !== 'professor' && (

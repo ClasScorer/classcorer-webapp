@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-1.1.x"]
 }
 
 datasource db {
@@ -183,7 +184,7 @@ model ScoringConfig {
   id                    String    @id @default(cuid())
   userId                String    @unique
   createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  updatedAt             DateTime  @default(now())
 
   // Scoring Settings
   participationScore    Int       @default(5)
@@ -199,7 +200,7 @@ model ThresholdConfig {
   id                    String    @id @default(cuid())
   userId                String    @unique
   createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  updatedAt             DateTime  @default(now())
 
   // Threshold Settings
   attendanceThreshold   Int       @default(70)
@@ -213,7 +214,7 @@ model DecayConfig {
   id                    String    @id @default(cuid())
   userId                String    @unique
   createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  updatedAt             DateTime  @default(now())
 
   // Decay Settings
   decayRate            Float     @default(0.5)
@@ -225,7 +226,7 @@ model BonusConfig {
   id                    String    @id @default(cuid())
   userId                String    @unique
   createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  updatedAt             DateTime  @default(now())
 
   // Bonus Settings
   enableThreeStreak    Boolean   @default(true)
@@ -239,7 +240,7 @@ model AdvancedConfig {
   id                    String    @id @default(cuid())
   userId                String    @unique
   createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  updatedAt             DateTime  @default(now())
 
   // Advanced Settings
   automaticRiskDetection Boolean  @default(true)
@@ -253,7 +254,7 @@ model Deadzone {
   name        String
   coordinates Json      // Store the deadzone coordinates as JSON
   createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  updatedAt   DateTime  @default(now())
 
   @@unique([userId, name])
 }

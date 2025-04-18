@@ -1,95 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { authOptions } from '@/lib/auth';
-import { getServerSession } from 'next-auth';
+import { auth } from '@/lib/auth';
 
 export async function GET(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: { courseId: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user) {
-      return new NextResponse('Unauthorized', { status: 401 });
+    // Ensure user is authenticated
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
     }
 
-    const courseId = params.courseId;
+    // Safely access params using await
+    const courseId = params?.courseId;
+    if (!courseId) {
+      return NextResponse.json(
+        { error: 'Course ID is required' },
+        { status: 400 }
+      );
+    }
 
     // Get course with all related data
     const course = await prisma.course.findUnique({
-      where: {
-        id: courseId,
-        instructorId: session.user.id
-      },
+      where: { id: courseId },
       include: {
-        instructor: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        },
         students: {
-          include: {
-            student: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                avatar: true
-              }
-            }
-          }
-        },
-        assignments: {
-          include: {
-            submissions: {
-              include: {
-                student: true
-              }
-            }
-          }
+          orderBy: { name: 'asc' },
         },
         lectures: {
-          include: {
-            attendances: {
-              include: {
-                student: true
-              }
-            }
-          }
-        }
-      }
+          orderBy: { date: 'desc' },
+        },
+        // Include other related data as needed
+      },
     });
 
     if (!course) {
-      return new NextResponse('Course not found', { status: 404 });
+      return NextResponse.json(
+        { error: 'Course not found' },
+        { status: 404 }
+      );
     }
 
-    // Transform the data to match our CourseData interface
-    const transformedCourse = {
-      id: course.id,
-      code: course.code,
-      name: course.name,
-      term: course.term || 'Current Term',
-      section: course.section || 'Default Section',
-      totalStudents: course.students.length,
-      attendance: calculateAverageAttendance(course.lectures),
-      passRate: calculatePassRate(course.assignments),
-      students: transformStudents(course.students, course.assignments, course.lectures),
-      stats: {
-        classAverage: calculateClassAverage(course.assignments),
-        engagement: calculateEngagement(course.students, course.assignments),
-        assignments: calculateAssignmentStats(course.assignments),
-        progress: calculateCourseProgress(course)
-      }
-    };
-
-    return NextResponse.json(transformedCourse);
+    return NextResponse.json(course);
   } catch (error) {
     console.error('Error fetching course:', error);
-    return new NextResponse('Internal Server Error', { status: 500 });
+    return NextResponse.json(
+      { error: 'Error fetching course data' },
+      { status: 500 }
+    );
   }
 }
 
@@ -369,4 +332,4 @@ function calculateCourseProgress(course: any) {
     nextTopic: 'Next Topic', // This would come from course content
     status: percentage >= 80 ? 'ahead' : percentage >= 60 ? 'on-track' : 'behind'
   };
-} 
+}
