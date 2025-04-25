@@ -577,26 +577,36 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       
+      // Important: Get 2D context WITHOUT alpha to prevent transparent background
       const ctx = canvas.getContext('2d', { alpha: false });
       if (!ctx) {
         reject(new Error("Canvas context not available"));
         return;
       }
       
-      // Ensure canvas is reset
+      // Fill with white background first to ensure no transparency
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       
-      // Draw the current video frame to the hidden canvas
+      // Draw the current video frame to the canvas - disable image smoothing for better detection
+      ctx.imageSmoothingEnabled = false;
+      
       try {
+        // Clear the canvas first
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw video frame
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         
-        // Debug: log if the canvas is empty/black
+        // Debug log the image data to check if it's black
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
         let isBlack = true;
-        // Check a sampling of pixels to see if the frame is entirely black
-        for (let i = 0; i < data.length; i += 40) {
+        let totalPixels = 0;
+        
+        // Check a sampling of pixels (every 100th pixel) to see if the frame is entirely black
+        for (let i = 0; i < data.length; i += 400) {
+          totalPixels++;
           if (data[i] > 10 || data[i + 1] > 10 || data[i + 2] > 10) {
             isBlack = false;
             break;
@@ -605,9 +615,10 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
         
         if (isBlack) {
           console.warn("Captured frame appears to be black - this may indicate a problem with the video stream");
+          console.log(`Checked ${totalPixels} sample pixels, all were black or near-black`);
         }
         
-        // Convert the canvas to a blob
+        // Convert the canvas to a blob using JPEG format for better compatibility
         canvas.toBlob(
           (blob) => {
             if (blob) {
@@ -938,10 +949,11 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       const boxHeight = height * canvas.height;
       
       // Set styles based on attention status
-      ctx.strokeStyle = face.attention_status === "focused" ? '#4CAF50' : '#F44336';
+      const color = face.attention_status === "focused" ? '#4CAF50' : '#F44336';
+      ctx.strokeStyle = color;
       ctx.lineWidth = 3;
       
-      // Draw rectangle
+      // Draw the bounding box rectangle
       ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
       
       // Draw hand raised indicator if applicable
@@ -949,24 +961,31 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
         ctx.fillStyle = 'rgba(255, 193, 7, 0.8)';
         ctx.beginPath();
         ctx.arc(
-          boxX + boxWidth, 
-          boxY, 
-          10, 0, 2 * Math.PI
+          boxX + boxWidth - 10, 
+          boxY + 10, 
+          8, 0, 2 * Math.PI
         );
         ctx.fill();
       }
       
-      // Add label
-      const status = face.recognition_status === "known" ? "Known" : "New";
+      // Add label background for better visibility
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(boxX, boxY - 25, boxWidth, 20);
+      
+      // Add label text
       const studentId = face.person_id;
       const student = students.find(s => s.id === studentId);
-      const label = student ? student.name : `${status} Person`;
+      let label = 'Unknown';
       
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      ctx.fillRect(boxX, boxY - 20, boxWidth, 20);
+      if (face.recognition_status === "known") {
+        label = student ? student.name : `Person ${face.person_id}`;
+      } else if (face.recognition_status === "new") {
+        label = `New Face (${Math.round((face.confidence || 0.5) * 100)}%)`;
+      }
+      
       ctx.fillStyle = '#FFFFFF';
       ctx.font = '12px Arial';
-      ctx.fillText(label, boxX + 5, boxY - 5);
+      ctx.fillText(label, boxX + 5, boxY - 10);
     });
   }, [faceData, students]);
 
@@ -1506,7 +1525,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                               className="bg-blue-500 w-full rounded-t"
                               style={{ 
                                 height: `${Math.max(5, point.focusedPercentage)}%`,
-                                opacity: 0.3 + (i / faceData.timeSeries!.length * 0.7)
+                                opacity: 0.3 + (index / faceData.timeSeries!.length * 0.7)
                               }}
                               title={`${new Date(point.timestamp).toLocaleTimeString()}: ${Math.round(point.focusedPercentage)}% focused`}
                             />
