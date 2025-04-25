@@ -1,6 +1,9 @@
 import { getCourseById, getStudentsByCourse } from "@/lib/data";
 import Link from "next/link";
 
+// NOTE: Deadzone functionality is being ignored in this component for now
+// Deadzone coordinates from the database are not being applied to any images here
+
 async function fetchCourseStudents(courseId: string, courseName: string) {
   try {
     // Directly fetch students for this specific course
@@ -54,4 +57,4 @@ export default async function LectureRoom({
   console.log(`Retrieved ${students?.length || 0} students for lecture room display`);
   
   // ... existing code ...
-} 
+}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { auth } from '@/lib/auth';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 export async function GET(
   request: NextRequest,
@@ -8,22 +9,26 @@ export async function GET(
 ) {
   try {
     // Ensure user is authenticated
-    const session = await auth();
+    const session = await getServerSession(authOptions);
     if (!session || !session.user) {
+      console.error('Authentication failed: No valid session');
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
       );
     }
 
-    // Safely access params using await
+    // Safely access params
     const courseId = params?.courseId;
     if (!courseId) {
+      console.error('No courseId provided in params');
       return NextResponse.json(
         { error: 'Course ID is required' },
         { status: 400 }
       );
     }
+
+    console.log(`Fetching course with ID: ${courseId}`);
 
     // Get course with all related data
     const course = await prisma.course.findUnique({
@@ -40,17 +45,24 @@ export async function GET(
     });
 
     if (!course) {
+      console.error(`Course not found with ID: ${courseId}`);
       return NextResponse.json(
         { error: 'Course not found' },
         { status: 404 }
       );
     }
 
+    console.log(`Successfully fetched course: ${course.title}`);
     return NextResponse.json(course);
   } catch (error) {
+    // Enhanced error logging
     console.error('Error fetching course:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : '';
+    console.error(`Error details: ${errorMessage}\n${errorStack}`);
+    
     return NextResponse.json(
-      { error: 'Error fetching course data' },
+      { error: 'Error fetching course data', details: errorMessage },
       { status: 500 }
     );
   }
