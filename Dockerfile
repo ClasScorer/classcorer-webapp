@@ -1,11 +1,11 @@
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:20-alpine3.17 AS builder
 
 # Set working directory
 WORKDIR /app
 
 # Install dependencies for node-gyp and Prisma
-RUN apk add --no-cache python3 make g++ libc6-compat
+RUN apk add --no-cache python3 make g++ libc6-compat openssl1.1
 
 # Copy package files first for better caching
 COPY package*.json ./
@@ -22,12 +22,12 @@ RUN npx prisma generate
 RUN npm run build
 
 # Production stage
-FROM node:20-alpine AS runner
+FROM node:20-alpine3.17 AS runner
 
 WORKDIR /app
 
 # Install only production dependencies
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat openssl1.1
 
 # Copy necessary files from build stage
 COPY --from=builder /app/package*.json ./
