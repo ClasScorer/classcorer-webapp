@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Camera, Presentation, Mic, MicOff, Video, VideoOff, Share2, MessageSquare, X, Play, Square, Save, ScreenShare, Send, Ghost, Bug, MonitorIcon } from "lucide-react"
+import { Camera, Presentation, Mic, MicOff, Video, VideoOff, Share2, MessageSquare, X, Play, Square, Save, ScreenShare, Send, Ghost, Bug, MonitorIcon, Trophy } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Course, Student } from "@/lib/data"
@@ -21,6 +21,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { CircularDialogWidget } from "@/app/components/CircularDialogWidget"
+import StudentDetailsDialog from "@/app/dashboard/students/student-details-dialog"
+import { Student as PrismaStudent } from "@prisma/client"
+import Link from "next/link"
 
 // Add Google API types
 interface GoogleSlide {
@@ -156,7 +160,7 @@ interface AttentionMetrics {
   focusScore: number
   focusDuration: number
   distractionCount: number
-  engagementLevel: 'high' | 'medium' | 'low'
+  engagementLevel: 'high' | 'medium' | 'low' | string
 }
 
 interface EnhancedFaceData extends FaceData {
@@ -224,6 +228,11 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   const [lectureToDelete, setLectureToDelete] = useState<string | null>(null)
   const [isDeletingLecture, setIsDeletingLecture] = useState(false)
 
+  // Add state for student action dialog
+  const [showStudentActionDialog, setShowStudentActionDialog] = useState(false);
+  const [selectedFace, setSelectedFace] = useState<EnhancedFaceData | null>(null);
+  const [dialogPosition, setDialogPosition] = useState({ x: 0, y: 0 });
+  
   // Refs for media elements
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -248,6 +257,10 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   // Enhanced state for face detection
   const [detectionHistory, setDetectionHistory] = useState<EnhancedFaceDetectionResponse[]>([])
   const [historyView, setHistoryView] = useState(false)
+
+  // Add state for student details dialog
+  const [selectedStudent, setSelectedStudent] = useState<PrismaStudent | null>(null);
+  const [showStudentDialog, setShowStudentDialog] = useState(false);
 
   // Modified function to start a new lecture and activate detection
   const startNewLecture = async (scheduledTime?: Date) => {
@@ -299,6 +312,43 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       startStopwatch();
       
       toast.success("Lecture started successfully");
+      
+      // Generate leaderboard link
+      const courseIdParam = course.id.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const leaderboardUrl = `${window.location.origin}/leaderboard/${courseIdParam}?lecture=${data.id}`;
+      
+      // Show toast with leaderboard link
+      toast.success(
+        <div className="flex flex-col gap-2">
+          <span>Leaderboard available:</span>
+          <div className="flex items-center gap-2">
+            <input 
+              type="text" 
+              value={leaderboardUrl} 
+              readOnly 
+              className="w-full text-xs p-2 rounded border text-gray-900 bg-gray-100"
+            />
+            <Button 
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                navigator.clipboard.writeText(leaderboardUrl);
+                toast.success("Leaderboard link copied to clipboard!");
+              }}
+              className="whitespace-nowrap"
+            >
+              Copy
+            </Button>
+          </div>
+          <Link href={leaderboardUrl} target="_blank" className="text-sm text-blue-600 hover:underline">
+            Open Leaderboard
+          </Link>
+        </div>,
+        {
+          duration: 10000,
+          description: "Share this link with your students to display the leaderboard"
+        }
+      );
       
       // Start detection if video is on
       if (isVideoOn) {
@@ -1054,7 +1104,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     toast.success("Simulated detection data generated");
   };
 
-  // Add this new function to handle canvas clicks on face boxes
+  // Modified canvas click handler to show CircularDialogWidget
   const handleCanvasClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!faceData || !displayCanvasRef.current || !videoRef.current) return;
     
@@ -1094,22 +1144,29 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
           if (students && students.length > 0) {
             const student = students.find(s => s.id === face.person_id);
             if (student) {
-              toast.info(`${student.name} - ${face.attention_status}`, {
-                description: face.hand_raising_status.is_hand_raised ? 
-                  "Hand is raised" : 
-                  `Focus score: ${(face as EnhancedFaceData).attentionMetrics?.focusScore || 0}%`
-              });
+              // Instead of showing toast, store face data and show dialog
+              setSelectedFace(face as EnhancedFaceData);
+              
+              // Calculate a good position for the dialog - convert back to screen coordinates
+              // Position it near the face but not covering it
+              const dialogX = (pixelX + pixelWidth/2) / scaleX;
+              const dialogY = (pixelY + pixelHeight + 20) / scaleY; // 20px below the face
+              
+              setDialogPosition({ x: dialogX + rect.left, y: dialogY + rect.top });
+              setShowStudentActionDialog(true);
               return;
             }
           }
-          // If student not found or no students array
-          toast.info(`Student ID: ${face.person_id}`, {
-            description: face.hand_raising_status.is_hand_raised ? 
-              "Hand is raised" : 
-              `Focus score: ${(face as EnhancedFaceData).attentionMetrics?.focusScore || 0}%`
-          });
+          
+          // Handle case when student isn't found
+          setSelectedFace(face as EnhancedFaceData);
+          const dialogX = (pixelX + pixelWidth/2) / scaleX;
+          const dialogY = (pixelY + pixelHeight + 20) / scaleY;
+          setDialogPosition({ x: dialogX + rect.left, y: dialogY + rect.top });
+          setShowStudentActionDialog(true);
           return;
         } else {
+          // For unknown faces, show toast notification
           toast.info("Unrecognized Student", {
             description: "This student hasn't been identified yet"
           });
@@ -1118,6 +1175,176 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       }
     }
   }, [faceData, students]);
+
+  // Function to handle student action selection from dialog
+  const handleCanvasStudentAction = useCallback(async (actionValue: number) => {
+    if (!selectedFace || !lectureId) return;
+    
+    const student = students?.find(s => s.id === selectedFace.person_id);
+    const displayName = student ? student.name : selectedFace.name || `Unknown (ID: ${selectedFace.person_id})`;
+    
+    const actionLabels = {
+      1: "Correct Answer (+10pts)",
+      2: "Attempted Answer (+5pts)",
+      3: "Penalize (-5pts)",
+      4: "Identify Student",
+      5: "Custom Points",
+      6: "View Profile"
+    };
+    
+    // Special handling for custom points (action 5)
+    let customPoints = 0;
+    if (actionValue === 5) {
+      const input = prompt("Enter custom points (positive or negative):", "0");
+      if (input === null) {
+        // User cancelled
+        setShowStudentActionDialog(false);
+        setSelectedFace(null);
+        return;
+      }
+      customPoints = parseInt(input, 10) || 0;
+    }
+    
+    try {
+      // Handle View Profile action
+      if (actionValue === 6 && student) {
+        // Fetch the full student data from the API
+        const response = await fetch(`/api/students/${student.id}?include=all`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch student details');
+        }
+        const studentData = await response.json();
+        setSelectedStudent(studentData);
+        setShowStudentDialog(true);
+        return;
+      }
+      
+      // Only update score for actions that affect points
+      if ([1, 2, 3, 5].includes(actionValue) && student) {
+        const response = await fetch('/api/student-scores', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            studentId: student.id,
+            lectureId,
+            actionType: actionValue,
+            customPoints: customPoints
+          }),
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to update student score');
+        }
+        
+        // Special message for custom points
+        const pointsMessage = actionValue === 5 ? 
+          `(${customPoints > 0 ? '+' : ''}${customPoints}pts)` : 
+          actionLabels[actionValue].match(/\([^)]+\)/)?.[0] || '';
+        
+        toast.success(`${actionLabels[actionValue].replace(/\([^)]+\)/, '')} for ${displayName} ${pointsMessage}`, {
+          description: `Student's score has been updated`
+        });
+      } else if (actionValue !== 6) {
+        // For non-scoring actions like View Profile
+        toast.info(`${actionLabels[actionValue]} for ${displayName}`, {
+          description: `Action applied successfully`
+        });
+      }
+    } catch (error) {
+      console.error('Error updating student score:', error);
+      toast.error(`Failed to apply action: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+    
+    // Close the dialog
+    setShowStudentActionDialog(false);
+    setSelectedFace(null);
+  }, [selectedFace, students, lectureId]);
+
+  // Handle student action selection in the student list
+  const handleStudentAction = async (actionValue: number, face: EnhancedFaceData) => {
+    if (!lectureId) return;
+    
+    const student = students?.find(s => s.id === face.person_id);
+    const displayName = student ? student.name : face.name || `Unknown (ID: ${face.person_id})`;
+    
+    const actionLabels = {
+      1: "Correct Answer (+10pts)",
+      2: "Attempted Answer (+5pts)",
+      3: "Penalize (-5pts)",
+      4: "Identify Student",
+      5: "Custom Points",
+      6: "View Profile"
+    };
+    
+    // Special handling for custom points (action 5)
+    let customPoints = 0;
+    if (actionValue === 5) {
+      const input = prompt("Enter custom points (positive or negative):", "0");
+      if (input === null) {
+        // User cancelled
+        return;
+      }
+      customPoints = parseInt(input, 10) || 0;
+    }
+    
+    try {
+      // Handle View Profile action
+      if (actionValue === 6 && student) {
+        // Fetch the full student data from the API
+        const response = await fetch(`/api/students/${student.id}?include=all`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch student details');
+        }
+        const studentData = await response.json();
+        setSelectedStudent(studentData);
+        setShowStudentDialog(true);
+        return;
+      }
+      
+      // Only update score for actions that affect points
+      if ([1, 2, 3, 5].includes(actionValue) && student) {
+        const response = await fetch('/api/student-scores', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            studentId: student.id,
+            lectureId,
+            actionType: actionValue,
+            customPoints: customPoints
+          }),
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to update student score');
+        }
+        
+        // Special message for custom points
+        const pointsMessage = actionValue === 5 ? 
+          `(${customPoints > 0 ? '+' : ''}${customPoints}pts)` : 
+          actionLabels[actionValue].match(/\([^)]+\)/)?.[0] || '';
+        
+        toast.success(`${actionLabels[actionValue].replace(/\([^)]+\)/, '')} for ${displayName} ${pointsMessage}`, {
+          description: `Student's score has been updated`
+        });
+      } else if (actionValue !== 6) {
+        // For non-scoring actions like View Profile
+        toast.info(`${actionLabels[actionValue]} for ${displayName}`, {
+          description: `Action applied successfully`
+        });
+      }
+    } catch (error) {
+      console.error('Error updating student score:', error);
+      toast.error(`Failed to apply action: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
 
   // Format duration for display
   const formatDuration = (minutes: number) => {
@@ -1308,6 +1535,20 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                       <Bug className="mr-2 h-4 w-4" />
                       Simulate
                     </Button>
+                    
+                    {/* Add leaderboard button */}
+                    <Button
+                      variant="secondary"
+                      className="w-full"
+                      onClick={() => {
+                        const courseIdParam = course.id.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+                        const leaderboardUrl = `${window.location.origin}/leaderboard/${courseIdParam}?lecture=${lectureId}`;
+                        window.open(leaderboardUrl, '_blank');
+                      }}
+                    >
+                      <Trophy className="mr-2 h-4 w-4" />
+                      Leaderboard
+                    </Button>
                   </div>
                   
                   <div className="mt-4 pt-4 border-t">
@@ -1468,52 +1709,58 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
                           const displayAvatar = student?.avatar || "";
                           
                           return (
-                            <div key={face.person_id} className="p-3 hover:bg-gray-50 transition-colors">
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-3">
-                                  <Avatar>
-                                    <AvatarImage src={displayAvatar} alt={displayName} />
-                                    <AvatarFallback>{displayName.substring(0, 2).toUpperCase()}</AvatarFallback>
-                                  </Avatar>
-                                  <div>
-                                    <p className="font-medium">{displayName}</p>
-                                    <p className="text-xs text-gray-500">{displayEmail}</p>
+                            <CircularDialogWidget 
+                              key={face.person_id}
+                              onSelect={(actionValue) => handleStudentAction(actionValue, face as EnhancedFaceData)}
+                              trigger={
+                                <div className="p-3 hover:bg-gray-50 transition-colors cursor-pointer">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-3">
+                                      <Avatar>
+                                        <AvatarImage src={displayAvatar} alt={displayName} />
+                                        <AvatarFallback>{displayName.substring(0, 2).toUpperCase()}</AvatarFallback>
+                                      </Avatar>
+                                      <div>
+                                        <p className="font-medium">{displayName}</p>
+                                        <p className="text-xs text-gray-500">{displayEmail}</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <Badge variant={face.attention_status === "focused" ? "default" : "destructive"}>
+                                        {face.attention_status}
+                                      </Badge>
+                                      {face.hand_raising_status.is_hand_raised && (
+                                        <Badge variant="outline" className="bg-yellow-50">
+                                          Hand Raised
+                                        </Badge>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                                <div className="flex gap-2">
-                                  <Badge variant={face.attention_status === "focused" ? "default" : "destructive"}>
-                                    {face.attention_status}
-                                  </Badge>
-                                  {face.hand_raising_status.is_hand_raised && (
-                                    <Badge variant="outline" className="bg-yellow-50">
-                                      Hand Raised
-                                    </Badge>
+                                  
+                                  {/* Enhanced metrics */}
+                                  {(face as EnhancedFaceData).attentionMetrics && (
+                                    <div className="grid grid-cols-4 gap-2 mt-1 text-xs">
+                                      <div className="bg-gray-50 p-1 rounded text-center">
+                                        <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.focusScore}%</div>
+                                        <div className="text-gray-500">Focus</div>
+                                      </div>
+                                      <div className="bg-gray-50 p-1 rounded text-center">
+                                        <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.focusDuration}s</div>
+                                        <div className="text-gray-500">Duration</div>
+                                      </div>
+                                      <div className="bg-gray-50 p-1 rounded text-center">
+                                        <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.distractionCount}</div>
+                                        <div className="text-gray-500">Distractions</div>
+                                      </div>
+                                      <div className="bg-gray-50 p-1 rounded text-center">
+                                        <div className="font-medium capitalize">{(face as EnhancedFaceData).attentionMetrics?.engagementLevel}</div>
+                                        <div className="text-gray-500">Engagement</div>
+                                      </div>
+                                    </div>
                                   )}
                                 </div>
-                              </div>
-                              
-                              {/* Enhanced metrics */}
-                              {(face as EnhancedFaceData).attentionMetrics && (
-                                <div className="grid grid-cols-4 gap-2 mt-1 text-xs">
-                                  <div className="bg-gray-50 p-1 rounded text-center">
-                                    <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.focusScore}%</div>
-                                    <div className="text-gray-500">Focus</div>
-                                  </div>
-                                  <div className="bg-gray-50 p-1 rounded text-center">
-                                    <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.focusDuration}s</div>
-                                    <div className="text-gray-500">Duration</div>
-                                  </div>
-                                  <div className="bg-gray-50 p-1 rounded text-center">
-                                    <div className="font-medium">{(face as EnhancedFaceData).attentionMetrics?.distractionCount}</div>
-                                    <div className="text-gray-500">Distractions</div>
-                                  </div>
-                                  <div className="bg-gray-50 p-1 rounded text-center">
-                                    <div className="font-medium capitalize">{(face as EnhancedFaceData).attentionMetrics?.engagementLevel}</div>
-                                    <div className="text-gray-500">Engagement</div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
+                              }
+                            />
                           );
                         })}
                         
@@ -1786,6 +2033,45 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Add the positioned dialog for canvas clicks */}
+      {selectedFace && (
+        <div 
+          className="fixed z-50"
+          style={{ 
+            position: 'fixed',
+            left: `${dialogPosition.x}px`,
+            top: `${dialogPosition.y}px`,
+            transform: 'translate(-50%, 0)',
+          }}
+        >
+          <CircularDialogWidget
+            onSelect={handleCanvasStudentAction}
+            isOpen={showStudentActionDialog}
+            onOpenChange={(open) => {
+              if (!open) setShowStudentActionDialog(false);
+            }}
+            trigger={
+              <div className="absolute -top-10 -left-10 w-1 h-1 opacity-0" />
+            }
+          />
+        </div>
+      )}
+
+      {/* Click overlay to close dialog */}
+      {showStudentActionDialog && (
+        <div 
+          className="fixed inset-0 z-40" 
+          onClick={() => setShowStudentActionDialog(false)}
+        />
+      )}
+
+      {/* Add StudentDetailsDialog */}
+      <StudentDetailsDialog
+        student={selectedStudent}
+        open={showStudentDialog}
+        onOpenChange={setShowStudentDialog}
+      />
     </div>
   )
 }
