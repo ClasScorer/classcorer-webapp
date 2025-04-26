@@ -249,6 +249,9 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   const [detectionHistory, setDetectionHistory] = useState<EnhancedFaceDetectionResponse[]>([])
   const [historyView, setHistoryView] = useState(false)
 
+  // Add a ref for a dedicated detection video element
+  const detectionVideoRef = useRef<HTMLVideoElement | null>(null);
+
   // Modified function to start a new lecture and activate detection
   const startNewLecture = async (scheduledTime?: Date) => {
     try {
@@ -488,30 +491,30 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     }
   }
 
-  // Handle camera toggle
+  // Handle camera toggle with a simpler approach like in page.tsx
   const toggleVideo = async () => {
     try {
       if (!isVideoOn) {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: true,  // Simplified constraints for testing
+          video: { width: 640, height: 480 },
           audio: false
-        })
+        });
         
         if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          streamRef.current = stream
-          await videoRef.current.play()
+          videoRef.current.srcObject = stream;
+          streamRef.current = stream;
+          videoRef.current.play();
         }
-        setIsVideoOn(true)
+        setIsVideoOn(true);
       } else {
         if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop())
+          streamRef.current.getTracks().forEach(track => track.stop());
         }
         if (videoRef.current) {
-          videoRef.current.srcObject = null
+          videoRef.current.srcObject = null;
         }
-        streamRef.current = null
-        setIsVideoOn(false)
+        streamRef.current = null;
+        setIsVideoOn(false);
         
         // If we're also detecting faces, stop that too
         if (isDetecting) {
@@ -519,203 +522,79 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
         }
       }
     } catch (error) {
-      console.error('Error accessing camera:', error)
-      setIsVideoOn(false)
+      console.error('Error accessing camera:', error);
+      toast.error(`Failed to access camera: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setIsVideoOn(false);
     }
-  }
+  };
 
-  // Handle audio toggle
-  const toggleAudio = async () => {
-    try {
-      if (!isAudioOn) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-        streamRef.current = stream
-      } else {
-        streamRef.current?.getTracks().forEach(track => {
-          if (track.kind === 'audio') track.stop()
-        })
-      }
-      setIsAudioOn(!isAudioOn)
-    } catch (error) {
-      console.error('Error accessing microphone:', error)
-    }
-  }
-
-  // Function to capture a video frame and convert to blob
+  // Function to capture a video frame and convert to blob - using the simpler approach from page.tsx
   const captureVideoFrame = (): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       if (!videoRef.current || !isVideoOn) {
+        console.error("Video is not available");
         reject(new Error("Video is not available"));
         return;
       }
 
+      // Use the detection canvas ref
       const canvas = detectionCanvasRef.current;
       if (!canvas) {
+        console.error("Canvas is not available");
         reject(new Error("Canvas is not available"));
         return;
       }
 
       const video = videoRef.current;
+      const ctx = canvas.getContext('2d');
       
-      // Make sure video is playing and has dimensions
-      if (video.videoWidth === 0 || video.videoHeight === 0 || video.paused || video.ended) {
-        console.warn("Video not ready or not playing", {
-          videoWidth: video.videoWidth,
-          videoHeight: video.videoHeight,
-          paused: video.paused,
-          ended: video.ended
-        });
-        // Try to restart the video if needed
-        video.play().catch(err => console.error("Error playing video:", err));
-        reject(new Error("Video not ready or not playing"));
-        return;
-      }
-      
-      console.log("Capturing frame with dimensions:", video.videoWidth, "x", video.videoHeight);
-      
-      // Set canvas dimensions to match video
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      
-      // Important: Get 2D context WITHOUT alpha to prevent transparent background
-      const ctx = canvas.getContext('2d', { alpha: false });
       if (!ctx) {
+        console.error("Canvas context not available");
         reject(new Error("Canvas context not available"));
         return;
       }
       
-      // Fill with white background first to ensure no transparency
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      // Draw the current video frame to the canvas - disable image smoothing for better detection
-      ctx.imageSmoothingEnabled = false;
+      console.log("Attempting to capture frame from video:", {
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        readyState: video.readyState
+      });
       
       try {
-        // Clear the canvas first
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Set canvas dimensions to match video
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
         
-        // Draw video frame
+        // Draw the current video frame to the canvas - simple direct approach
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        console.log("Successfully drew video to canvas");
         
-        // Debug log the image data to check if it's black
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-        let isBlack = true;
-        let totalPixels = 0;
+        // Add a timestamp for debugging
+        ctx.fillStyle = "rgba(0, 255, 0, 0.5)";
+        ctx.fillRect(0, 0, 150, 20);
+        ctx.fillStyle = "black";
+        ctx.font = "12px Arial";
+        ctx.fillText(`${new Date().toLocaleTimeString()}`, 5, 15);
         
-        // Check a sampling of pixels (every 100th pixel) to see if the frame is entirely black
-        for (let i = 0; i < data.length; i += 400) {
-          totalPixels++;
-          if (data[i] > 10 || data[i + 1] > 10 || data[i + 2] > 10) {
-            isBlack = false;
-            break;
-          }
-        }
-        
-        if (isBlack) {
-          console.warn("Captured frame appears to be black - this may indicate a problem with the video stream");
-          console.log(`Checked ${totalPixels} sample pixels, all were black or near-black`);
-        }
-        
-        // Convert the canvas to a blob using JPEG format for better compatibility
+        // Convert canvas to blob
         canvas.toBlob(
           (blob) => {
             if (blob) {
               console.log(`Successfully created blob: ${blob.size} bytes`);
               resolve(blob);
             } else {
+              console.error("Failed to create blob from canvas");
               reject(new Error("Failed to create blob from canvas"));
             }
           },
           'image/jpeg',
-          0.85
-        ); // JPEG at 85% quality
+          0.8
+        );
       } catch (err) {
-        console.error("Error drawing video to canvas:", err);
-        reject(new Error(`Drawing error: ${err.message}`));
+        console.error("Error in frame capture:", err);
+        reject(new Error(`Frame capture error: ${err.message}`));
       }
     });
-  };
-
-  const normalizeCoordinates = (box: BoundingBox): BoundingBox => {
-    // If coordinates already appear to be normalized (between 0-1), return as is
-    if (box.x <= 1 && box.y <= 1 && box.width <= 1 && box.height <= 1) {
-      return box;
-    }
-    
-    // Get video dimensions for normalization
-    const videoWidth = videoRef.current?.videoWidth || 1920; // Fallback to common width
-    const videoHeight = videoRef.current?.videoHeight || 1080; // Fallback to common height
-    
-    // Normalize pixel values to 0-1 range
-    return {
-      x: Math.min(1, Math.max(0, box.x / videoWidth)),
-      y: Math.min(1, Math.max(0, box.y / videoHeight)),
-      width: Math.min(1, Math.max(0, box.width / videoWidth)),
-      height: Math.min(1, Math.max(0, box.height / videoHeight))
-    };
-  };
-
-  // Enhance the API response with UI-specific data
-  const enhanceApiResponse = (data: FaceDetectionResponse): EnhancedFaceDetectionResponse => {
-    // Enhanced faces with additional metrics
-    const enhancedFaces = data.faces.map(face => {
-      // Try to find the student that matches the detected face
-      const student = students.find(s => s.id.toString() === face.person_id);
-      
-      // Normalize bounding box coordinates if they are in pixel values
-      const normalizedBoundingBox = normalizeCoordinates(face.bounding_box);
-      
-      // Map recognition status from backend to frontend expected values
-      // Backend uses "found" but frontend expects "known"
-      const mappedRecognitionStatus = face.recognition_status === "found" ? "known" : face.recognition_status;
-      
-      // Determine engagement level based on attention status
-      const engagementLevel: 'high' | 'medium' | 'low' = 
-        face.attention_status === "FOCUSED" ? 'high' : 'low';
-      
-      // Generate the additional metrics that the UI expects
-      return {
-        ...face,
-        // Map recognition status
-        recognition_status: mappedRecognitionStatus as "new" | "known" | "unknown",
-        // Ensure correct case for attention_status (API uses uppercase)
-        attention_status: face.attention_status.toLowerCase() as "focused" | "unfocused",
-        // Add name if we found a matching student
-        name: student?.name || "Unknown Person",
-        bounding_box: normalizedBoundingBox,
-        // Add additional metrics needed for UI display with proper typing
-        attentionMetrics: {
-          focusScore: face.attention_status === "FOCUSED" ? 85 : 30,
-          focusDuration: Math.round(Math.random() * 60), 
-          distractionCount: face.attention_status === "FOCUSED" ? 1 : 4,
-          engagementLevel: engagementLevel
-        },
-        lastDetectedAt: new Date().toISOString(),
-        // Add UI-specific properties
-        highlight: false,
-        infoVisible: false
-      };
-    });
-  
-    // Calculate overall class engagement (% of focused students)
-    const classEngagement = data.total_faces > 0 
-      ? (data.summary.focused_faces / data.total_faces) * 100
-      : 0;
-      
-    // Return the enhanced data structure
-    return {
-      ...data,
-      faces: enhancedFaces,
-      classEngagement,
-      // Add time series data structure for trends
-      timeSeries: detectionHistory.slice(-10).map((history, index) => ({
-        timestamp: new Date(Date.now() - (10 - index) * 5000).toISOString(),
-        focusedPercentage: history?.summary?.focused_faces / Math.max(history?.total_faces, 1) * 100 || 0,
-        totalFaces: history?.total_faces || 0
-      }))
-    };
   };
 
   // Function to send frame to API and get face detection results
@@ -743,11 +622,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       
       // Get the base response data
       const data: FaceDetectionResponse = await response.json();
-      
-      // Ensure the timestamp matches our request
-      if (data.timestamp !== frameTimestamp) {
-        console.warn(`Timestamp mismatch: sent ${frameTimestamp}, received ${data.timestamp}`);
-      }
+      console.log("Received detection response:", data);
       
       // Transform the API response into the enhanced format
       const enhancedData = enhanceApiResponse(data);
@@ -766,100 +641,6 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     }
   };
 
-  // Function to save engagement data to the database
-  const saveEngagementData = async (data: FaceDetectionResponse) => {
-    if (!lectureId) return;
-    
-    try {
-      const response = await fetch('/api/lectures/engagement', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      });
-      
-      if (!response.ok) {
-        console.error('Failed to save engagement data:', await response.text());
-      }
-    } catch (error) {
-      console.error('Error saving engagement data:', error);
-    }
-  };
-
-  // Enhanced function to process face detection with more metrics
-  const processFaceDetectionResults = (data: FaceDetectionResponse) => {
-    if (!data || !data.faces || !(data.faces.length === 0)) return;
-    
-    // Add enhanced metrics to face data
-    const enhancedFaces: EnhancedFaceData[] = data.faces.map(face => {
-      const student = students.find(s => s.id === face.person_id);
-      
-      // Generate random engagement metrics for demo purposes
-      // In a real app, this would come from actual analysis
-      const attentionMetrics: AttentionMetrics = {
-        focusScore: Math.round(Math.random() * 100),
-        focusDuration: Math.round(Math.random() * 60),
-        distractionCount: Math.round(Math.random() * 5),
-        engagementLevel: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low'
-      };
-      
-      return {
-        ...face,
-        name: student?.name || "Unknown",
-        attentionMetrics,
-        lastDetectedAt: new Date().toISOString(),
-        consecutiveFrames: Math.floor(Math.random() * 10) + 1
-      };
-    });
-    
-    // Create enhanced response with overall class engagement score
-    const enhancedData: EnhancedFaceDetectionResponse = {
-      ...data,
-      faces: enhancedFaces,
-      classEngagement: Math.round(
-        (data.summary.focused_faces / Math.max(data.total_faces, 1)) * 100
-      ),
-      timeSeries: detectionHistory.slice(-10).map((history, index) => ({
-        timestamp: new Date(Date.now() - (10 - index) * 5000).toISOString(),
-        focusedPercentage: history?.summary?.focused_faces / Math.max(history?.total_faces, 1) * 100 || 0,
-        totalFaces: history?.total_faces || 0
-      }))
-    };
-    
-    // Update the UI with enhanced face detection data
-    setFaceData(enhancedData);
-    setDetectionHistory(prev => [...prev, enhancedData].slice(-20)); // Keep last 20 records
-    
-    // Process faces for attendance
-    const now = new Date();
-    const updatedAttendance = {...attendanceData};
-    
-    enhancedData.faces.forEach(face => {
-      if (face.recognition_status === "known" || face.recognition_status === "found") {
-        const studentId = face.person_id;
-        
-        // Find the corresponding student
-        const student = students.find(s => s.id === studentId);
-        if (!student) return;
-        
-        if (updatedAttendance[studentId]) {
-          // Update existing record
-          updatedAttendance[studentId].lastSeen = now;
-        } else {
-          // Create new record
-          updatedAttendance[studentId] = {
-            status: "PRESENT",
-            joinTime: now,
-            lastSeen: now
-          };
-        }
-      }
-    });
-    
-    setAttendanceData(updatedAttendance);
-  };
-
   // Start face detection with the given lecture ID
   const startFaceDetection = (lectureId: string) => {
     if (!isVideoOn) {
@@ -867,12 +648,21 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       return;
     }
     
+    console.log("Starting detection with video state:", {
+      srcObject: videoRef.current?.srcObject ? "present" : "null",
+      paused: videoRef.current?.paused,
+      videoWidth: videoRef.current?.videoWidth,
+      videoHeight: videoRef.current?.videoHeight
+    });
+    
     setIsDetecting(true);
     
     // Create an interval to capture frames and send to API
     const interval = setInterval(async () => {
       try {
+        console.log("Capture cycle started");
         const frameBlob = await captureVideoFrame();
+        console.log(`Captured frame: ${frameBlob.size} bytes`);
         await sendFrameToAPI(frameBlob);
       } catch (error) {
         console.error("Error in detection cycle:", error);
@@ -883,45 +673,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     toast.success("Face detection started");
   };
   
-  // Stop face detection
-  const stopFaceDetection = () => {
-    if (detectionInterval) {
-      clearInterval(detectionInterval);
-      setDetectionInterval(null);
-    }
-    setIsDetecting(false);
-    toast.info("Face detection stopped");
-  };
-
-  // Function to end lecture
-  const endLecture = async () => {
-    // Stop detection
-    stopFaceDetection();
-    
-    // Clear duration timer
-    if (durationInterval) {
-      clearInterval(durationInterval);
-      setDurationInterval(null);
-    }
-    
-    // Save attendance records
-    if (lectureId) {
-      await saveAttendanceRecords();
-      
-      // Navigate to the lecture details page
-      router.push(`/dashboard/lectures/${course.id}/${lectureId}`);
-    }
-    
-    // Clean up
-    setLectureStarted(false);
-    setLectureId(null);
-    setAttendanceData({});
-    setFaceData(null);
-    setElapsedSeconds(0);
-    setLectureStartTime(null);
-  };
-
-  // Draw face boxes on the display canvas
+  // Modified draw faces function to use the same approach as in page.tsx
   const drawFaceBoxes = useCallback(() => {
     if (!faceData || !faceData.faces || !displayCanvasRef.current || !videoRef.current) return;
     
@@ -929,8 +681,8 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     const video = videoRef.current;
     
     // Set canvas dimensions to match video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
     
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -938,11 +690,16 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     // Clear previous drawings
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
+    // Always redraw the video first - this is key for the page.tsx approach
+    if (isVideoOn) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    }
+    
     // Draw each face box
     faceData.faces.forEach(face => {
       const { x, y, width, height } = face.bounding_box;
       
-      // Convert normalized coordinates to pixel values if needed
+      // Convert normalized coordinates to pixel values
       const boxX = x * canvas.width;
       const boxY = y * canvas.height;
       const boxWidth = width * canvas.width;
@@ -987,14 +744,69 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
       ctx.font = '12px Arial';
       ctx.fillText(label, boxX + 5, boxY - 10);
     });
-  }, [faceData, students]);
+  }, [faceData, students, isVideoOn]);
 
-  // Update canvas when face data changes
+  // Update canvas when face data changes 
   useEffect(() => {
-    if (faceData) {
-      drawFaceBoxes();
+    // Set up continuous redrawing like in page.tsx
+    if (isVideoOn) {
+      const drawLoop = () => {
+        drawFaceBoxes();
+        animationRef.current = requestAnimationFrame(drawLoop);
+      };
+      
+      const animationRef = { current: requestAnimationFrame(drawLoop) };
+      
+      return () => {
+        cancelAnimationFrame(animationRef.current);
+      };
     }
-  }, [faceData, drawFaceBoxes]);
+  }, [faceData, drawFaceBoxes, isVideoOn]);
+
+  // Handle audio toggle
+  const toggleAudio = async () => {
+    try {
+      if (!isAudioOn) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        streamRef.current = stream
+      } else {
+        streamRef.current?.getTracks().forEach(track => {
+          if (track.kind === 'audio') track.stop()
+        })
+      }
+      setIsAudioOn(!isAudioOn)
+    } catch (error) {
+      console.error('Error accessing microphone:', error)
+    }
+  }
+
+  // Function to end lecture
+  const endLecture = async () => {
+    // Stop detection
+    stopFaceDetection();
+    
+    // Clear duration timer
+    if (durationInterval) {
+      clearInterval(durationInterval);
+      setDurationInterval(null);
+    }
+    
+    // Save attendance records
+    if (lectureId) {
+      await saveAttendanceRecords();
+      
+      // Navigate to the lecture details page
+      router.push(`/dashboard/lectures/${course.id}/${lectureId}`);
+    }
+    
+    // Clean up
+    setLectureStarted(false);
+    setLectureId(null);
+    setAttendanceData({});
+    setFaceData(null);
+    setElapsedSeconds(0);
+    setLectureStartTime(null);
+  };
 
   // Clean up on unmount
   useEffect(() => {
@@ -1251,6 +1063,94 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     );
     
     toast.success("Presentation opened in new window");
+  };
+
+  // Stop face detection
+  const stopFaceDetection = () => {
+    if (detectionInterval) {
+      clearInterval(detectionInterval);
+      setDetectionInterval(null);
+    }
+    setIsDetecting(false);
+    toast.info("Face detection stopped");
+  };
+
+  // Enhance the API response with UI-specific data
+  const enhanceApiResponse = (data: FaceDetectionResponse): EnhancedFaceDetectionResponse => {
+    // Enhanced faces with additional metrics
+    const enhancedFaces = data.faces.map(face => {
+      // Try to find the student that matches the detected face
+      const student = students.find(s => s.id.toString() === face.person_id);
+      
+      // Map recognition status from backend to frontend expected values
+      // Backend uses "found" but frontend expects "known"
+      const mappedRecognitionStatus = face.recognition_status === "found" ? "known" : face.recognition_status;
+      
+      // Determine engagement level based on attention status
+      const engagementLevel: 'high' | 'medium' | 'low' = 
+        face.attention_status === "FOCUSED" ? 'high' : 'low';
+      
+      // Generate the additional metrics that the UI expects
+      return {
+        ...face,
+        // Map recognition status
+        recognition_status: mappedRecognitionStatus as "new" | "known" | "unknown",
+        // Ensure correct case for attention_status (API uses uppercase)
+        attention_status: face.attention_status.toLowerCase() as "focused" | "unfocused",
+        // Add name if we found a matching student
+        name: student?.name || "Unknown Person",
+        // Add additional metrics needed for UI display with proper typing
+        attentionMetrics: {
+          focusScore: face.attention_status === "FOCUSED" ? 85 : 30,
+          focusDuration: Math.round(Math.random() * 60), 
+          distractionCount: face.attention_status === "FOCUSED" ? 1 : 4,
+          engagementLevel: engagementLevel
+        },
+        lastDetectedAt: new Date().toISOString(),
+        // Add UI-specific properties
+        highlight: false,
+        infoVisible: false
+      };
+    });
+  
+    // Calculate overall class engagement (% of focused students)
+    const classEngagement = data.total_faces > 0 
+      ? (data.summary.focused_faces / data.total_faces) * 100
+      : 0;
+      
+    // Return the enhanced data structure
+    return {
+      ...data,
+      faces: enhancedFaces,
+      classEngagement,
+      // Add time series data structure for trends
+      timeSeries: detectionHistory.slice(-10).map((history, index) => ({
+        timestamp: new Date(Date.now() - (10 - index) * 5000).toISOString(),
+        focusedPercentage: history?.summary?.focused_faces / Math.max(history?.total_faces, 1) * 100 || 0,
+        totalFaces: history?.total_faces || 0
+      }))
+    };
+  };
+
+  // Function to save engagement data to the database
+  const saveEngagementData = async (data: FaceDetectionResponse) => {
+    if (!lectureId) return;
+    
+    try {
+      const response = await fetch('/api/lectures/engagement', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to save engagement data:', await response.text());
+      }
+    } catch (error) {
+      console.error('Error saving engagement data:', error);
+    }
   };
 
   // Return JSX for the component with enhanced slides and detection info

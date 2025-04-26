@@ -1,70 +1,95 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { getServerSession } from 'next-auth';
 
 export async function GET(
-  request: NextRequest,
+  req: NextRequest,
   { params }: { params: { courseId: string } }
 ) {
   try {
-    // Ensure user is authenticated
     const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
-      console.error('Authentication failed: No valid session');
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      );
+    
+    if (!session?.user) {
+      return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    // Safely access params
-    const courseId = params?.courseId;
-    if (!courseId) {
-      console.error('No courseId provided in params');
-      return NextResponse.json(
-        { error: 'Course ID is required' },
-        { status: 400 }
-      );
-    }
-
-    console.log(`Fetching course with ID: ${courseId}`);
+    const courseId = params.courseId;
 
     // Get course with all related data
     const course = await prisma.course.findUnique({
-      where: { id: courseId },
+      where: {
+        id: courseId,
+        instructorId: session.user.id
+      },
       include: {
+        instructor: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
         students: {
-          orderBy: { name: 'asc' },
+          include: {
+            student: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                avatar: true
+              }
+            }
+          }
+        },
+        assignments: {
+          include: {
+            submissions: {
+              include: {
+                student: true
+              }
+            }
+          }
         },
         lectures: {
-          orderBy: { date: 'desc' },
-        },
-        // Include other related data as needed
-      },
+          include: {
+            attendances: {
+              include: {
+                student: true
+              }
+            }
+          }
+        }
+      }
     });
 
     if (!course) {
-      console.error(`Course not found with ID: ${courseId}`);
-      return NextResponse.json(
-        { error: 'Course not found' },
-        { status: 404 }
-      );
+      return new NextResponse('Course not found', { status: 404 });
     }
 
-    console.log(`Successfully fetched course: ${course.title}`);
-    return NextResponse.json(course);
+    // Transform the data to match our CourseData interface
+    const transformedCourse = {
+      id: course.id,
+      code: course.code,
+      name: course.name,
+      term: course.term || 'Current Term',
+      section: course.section || 'Default Section',
+      totalStudents: course.students.length,
+      attendance: calculateAverageAttendance(course.lectures),
+      passRate: calculatePassRate(course.assignments),
+      students: transformStudents(course.students, course.assignments, course.lectures),
+      stats: {
+        classAverage: calculateClassAverage(course.assignments),
+        engagement: calculateEngagement(course.students, course.assignments),
+        assignments: calculateAssignmentStats(course.assignments),
+        progress: calculateCourseProgress(course)
+      }
+    };
+
+    return NextResponse.json(transformedCourse);
   } catch (error) {
-    // Enhanced error logging
     console.error('Error fetching course:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const errorStack = error instanceof Error ? error.stack : '';
-    console.error(`Error details: ${errorMessage}\n${errorStack}`);
-    
-    return NextResponse.json(
-      { error: 'Error fetching course data', details: errorMessage },
-      { status: 500 }
-    );
+    return new NextResponse('Internal Server Error', { status: 500 });
   }
 }
 
@@ -344,4 +369,4 @@ function calculateCourseProgress(course: any) {
     nextTopic: 'Next Topic', // This would come from course content
     status: percentage >= 80 ? 'ahead' : percentage >= 60 ? 'on-track' : 'behind'
   };
-}
+} 
