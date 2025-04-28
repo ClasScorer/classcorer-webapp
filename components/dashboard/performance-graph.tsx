@@ -2,7 +2,7 @@
 
 import { Card, CardContent } from "@/components/ui/card"
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts"
-import { type CourseData } from "./courses/types"
+import { EnhancedCourseData } from "./PerformanceSection"
 
 interface PerformanceData {
   week: number
@@ -11,7 +11,7 @@ interface PerformanceData {
   attendance: number
 }
 
-function calculateWeeklyStats(courses: CourseData[]): PerformanceData[] {
+function calculateWeeklyStats(courses: EnhancedCourseData[]): PerformanceData[] {
   const maxWeek = Math.max(...courses.map(course => course.week))
   const weeklyStats: PerformanceData[] = []
   
@@ -32,13 +32,13 @@ function calculateWeeklyStats(courses: CourseData[]): PerformanceData[] {
     const totalStudents = weekCourses.reduce((sum, course) => sum + course.totalStudents, 0)
     
     const submissions = weekCourses.reduce((sum, course) => 
-      sum + (course.submissions * course.totalStudents), 0) / totalStudents
+      sum + (course.submissionRate * course.totalStudents), 0) / (totalStudents || 1)
     
     const average = weekCourses.reduce((sum, course) => 
-      sum + (course.averageScore * course.totalStudents), 0) / totalStudents
+      sum + (course.averageScore * course.totalStudents), 0) / (totalStudents || 1)
     
     const attendance = weekCourses.reduce((sum, course) => 
-      sum + (course.averageAttendance * course.totalStudents), 0) / totalStudents
+      sum + (course.averageAttendance * course.totalStudents), 0) / (totalStudents || 1)
     
     weeklyStats.push({
       week,
@@ -52,7 +52,7 @@ function calculateWeeklyStats(courses: CourseData[]): PerformanceData[] {
 }
 
 interface PerformanceGraphProps {
-  courses: CourseData[];
+  courses: EnhancedCourseData[];
 }
 
 export function PerformanceGraph({ courses }: PerformanceGraphProps) {

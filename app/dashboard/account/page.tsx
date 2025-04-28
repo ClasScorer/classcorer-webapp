@@ -36,7 +36,7 @@ import { Bell, Lock, User, Mail, Shield, Moon, Sun, Globe, BookOpen } from "luci
 import { getCurrentUser } from "@/lib/data"
 import { getInitials } from "@/lib/utils"
 import { TimezoneSelect } from "@/components/ui/timezone-select"
-import { CanvasIntegration } from "@/app/dashboard/canvas-integration"
+import { CanvasIntegration } from "@/components/dashboard/canvas-integration"
 import { toast } from "sonner"
 
 const languages = [

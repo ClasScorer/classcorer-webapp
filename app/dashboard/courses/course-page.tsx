@@ -10,8 +10,8 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PerformanceGraph } from "../performance-graph";
-import { StudentLeaderboard } from "../student-leaderboard";
+import { PerformanceGraph } from "../../../components/dashboard/performance-graph";
+import { StudentLeaderboard } from "../../../components/dashboard/student-leaderboard";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
