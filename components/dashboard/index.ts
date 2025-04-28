@@ -9,4 +9,5 @@ export * from './StatCards';
 export * from './student-leaderboard';
 export * from './canvas-integration';
 export * from './performance-graph';
+export * from './ClientComponents';
 

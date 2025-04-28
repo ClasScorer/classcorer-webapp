@@ -15,7 +15,7 @@ interface Announcement {
 
 interface BottomSectionProps {
   announcements: Announcement[];
-  formatDate: (date: string) => string;
+  formatDate: (date: string) => Promise<string>;
 }
 
 export function BottomSection({ announcements, formatDate }: BottomSectionProps) {
@@ -42,9 +42,7 @@ export function BottomSection({ announcements, formatDate }: BottomSectionProps)
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          <Suspense fallback={<div className="p-4 text-center text-muted-foreground">Loading leaderboard...</div>}>
-            <StudentLeaderboard />
-          </Suspense>
+          <StudentLeaderboard />
         </CardContent>
       </Card>
     </div>

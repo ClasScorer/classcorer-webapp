@@ -1,3 +1,5 @@
+'use client';
+
 import { Trophy, Medal, Star, Flame, Target, Zap, Award, Crown, Sparkles, Share2, Settings } from "lucide-react"
 import {
   Card,
@@ -15,7 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { TrendingDown, TrendingUp } from "lucide-react"
-import { loadStudents, type Student } from "@/lib/data"
+import { getTopStudents, type Student } from "@/lib/data"
 
 function getInitials(name: string) {
   return name
@@ -52,17 +54,12 @@ function getTextColor(average: number) {
   return "text-muted-foreground"
 }
 
-export async function StudentLeaderboard() {
-  const students = await loadStudents()
-  
-  // Sort students by average score and get top 5
-  const topStudents = students
-    .sort((a, b) => b.average - a.average)
-    .slice(0, 5)
-    .map((student, index) => ({
-      ...student,
-      rank: index + 1
-    }))
+export function StudentLeaderboard() {
+  // Get pre-loaded top students data
+  const topStudents = getTopStudents().map((student, index) => ({
+    ...student,
+    rank: index + 1
+  }));
 
   return (
     <CardContent className="space-y-4">

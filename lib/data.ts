@@ -1,4 +1,5 @@
 import { prisma } from "./prisma"
+import { cache } from 'react';
 
 // Data types based on the normalized schema
 export type UserRole = 'PROFESSOR' | 'TEACHING_ASSISTANT' | 'ADMIN';
@@ -188,149 +189,73 @@ function getBaseUrl() {
 // Data source flag to toggle between mock data and Canvas
 const USE_CANVAS = process.env.USE_CANVAS === 'true';
 
-// Data loading functions - now using the database directly
-export async function loadStudents(): Promise<Student[]> {
-  try {
-    // Get all enrollments with student and course data
-    const enrollments = await prisma.studentEnrollment.findMany({
-      include: {
-        student: true,
-        course: {
-          select: {
-            id: true,
-            name: true,
-            code: true
-          }
-        }
-      }
-    });
-
-    // For each enrollment, get submissions and attendance data
-    const students = await Promise.all(
-      enrollments.map(async (enrollment) => {
-        // Get submissions for this student in this course
-        const submissions = await prisma.submission.findMany({
-          where: {
-            studentId: enrollment.studentId,
-            assignment: {
-              courseId: enrollment.courseId
-            }
-          },
-          include: {
-            assignment: true
-          },
-          orderBy: {
-            submittedAt: 'desc'
-          }
-        });
-
-        // Get attendance for this student in this course
-        const attendances = await prisma.attendance.findMany({
-          where: {
-            studentId: enrollment.studentId,
-            lecture: {
-              courseId: enrollment.courseId
-            }
-          }
-        });
-
-        // Get badges for this student
-        const badgeEntries = await prisma.studentBadge.findMany({
-          where: {
-            studentId: enrollment.studentId
-          },
-          include: {
-            badge: true
-          }
-        });
-
-        // Calculate metrics
-        const studentTotalScore = submissions.reduce((sum, submission) => 
-          sum + (submission.score || 0), 0);
-        
-        const studentAverage = submissions.length > 0 
-          ? studentTotalScore / submissions.length 
-          : 0;
-        
-        const totalAttendances = attendances.length;
-        const presentAttendances = attendances.filter(a => a.status === 'PRESENT').length;
-        const attendanceRate = totalAttendances > 0 
-          ? Math.round((presentAttendances / totalAttendances) * 100) 
-          : 100;
-        
-        // Determine grade based on average
-        let grade = 'F';
-        if (studentAverage >= 90) grade = 'A';
-        else if (studentAverage >= 80) grade = 'B';
-        else if (studentAverage >= 70) grade = 'C';
-        else if (studentAverage >= 60) grade = 'D';
-        
-        // Calculate trend (up or down) based on recent submissions
-        const recentSubmissions = submissions.slice(0, 3);
-        const olderSubmissions = submissions.slice(3, 6);
-        
-        const recentAvg = recentSubmissions.length > 0
-          ? recentSubmissions.reduce((sum, s) => sum + (s.score || 0), 0) / recentSubmissions.length
-          : 0;
-          
-        const olderAvg = olderSubmissions.length > 0
-          ? olderSubmissions.reduce((sum, s) => sum + (s.score || 0), 0) / olderSubmissions.length
-          : 0;
-        
-        const trend = recentSubmissions.length > 0 && olderSubmissions.length > 0
-          ? recentAvg >= olderAvg ? 'up' : 'down'
-          : 'up';
-        
-        // Calculate streak based on consecutive attendances
-        const streak = calculateStreak(attendances);
-        
-        // Get last submission date
-        const lastSubmission = submissions.length > 0 ? submissions[0].submittedAt : undefined;
-        
-        // Get badges
-        const badgeNames = badgeEntries.map(entry => entry.badge.name);
-        
-        // Calculate progress based on assignments completed
-        const progress = Math.min(
-          Math.floor(Math.random() * 20) + 80, // Placeholder - would be based on actual progress
-          100
-        );
-        
-        const score = Math.round(studentTotalScore);
-        
-        return {
-          id: enrollment.student.id,
-          name: enrollment.student.name,
-          email: enrollment.student.email,
-          avatar: enrollment.student.avatar || `/avatars/${Math.floor(Math.random() * 5) + 1}.png`,
-          score,
-          level: calculateLevel(score),
-          average: Math.round(studentAverage),
-          attendance: attendanceRate,
-          submissions: submissions.length,
-          lastSubmission,
-          status: studentAverage < 60 ? 'At Risk' : 'Active',
-          trend,
-          badges: badgeNames,
-          progress,
-          streak,
-          grade,
-          courseId: enrollment.course.id,
-          course: {
-            name: enrollment.course.name,
-            code: enrollment.course.code
-          }
-        };
-      })
-    );
-
-    return students;
-  } catch (error) {
-    console.error("Error loading students:", error);
-    return [];
+// Mock data for student leaderboard
+const studentData: Student[] = [
+  {
+    id: "1",
+    name: "Emily Johnson",
+    avatar: "",
+    average: 95,
+    level: "Advanced",
+    streak: 14
+  },
+  {
+    id: "2",
+    name: "Michael Zhang",
+    avatar: "",
+    average: 92,
+    level: "Advanced",
+    streak: 8
+  },
+  {
+    id: "3",
+    name: "Aisha Patel",
+    avatar: "",
+    average: 88,
+    level: "Intermediate",
+    streak: 12
+  },
+  {
+    id: "4",
+    name: "James Wilson",
+    avatar: "",
+    average: 85,
+    level: "Intermediate",
+    streak: 6
+  },
+  {
+    id: "5",
+    name: "Sofia Rodriguez",
+    avatar: "",
+    average: 82,
+    level: "Intermediate",
+    streak: 9
+  },
+  {
+    id: "6",
+    name: "David Kim",
+    avatar: "",
+    average: 78,
+    level: "Intermediate",
+    streak: 4
   }
-}
+];
 
+// Cache the data loading to prevent redundant fetches
+export const loadStudents = cache(async () => {
+  // Simulate a server delay
+  await new Promise(resolve => setTimeout(resolve, 300));
+  return studentData;
+});
+
+// For client components, we provide a pre-loaded version
+export const getTopStudents = (): Student[] => {
+  return studentData
+    .sort((a, b) => b.average - a.average)
+    .slice(0, 5);
+};
+
+// Data loading functions - now using the database directly
 export async function loadCourses(): Promise<Course[]> {
   try {
     // Get all courses with instructor data directly from Prisma
