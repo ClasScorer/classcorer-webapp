@@ -19,7 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-import { LectureRoom } from "./lecture-room";
+import LectureRoom from "@/components/lecture-room/LectureRoom";
 import { getCourseById, getStudentsByCourse, fetchLecturesByCourse, Course, Student, Lecture } from "@/lib/data";
 
 export default function LectureRoomPage() {
