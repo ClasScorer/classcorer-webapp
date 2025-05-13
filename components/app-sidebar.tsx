@@ -14,6 +14,8 @@ import {
   Trophy,
   Bug,
   UserCog,
+  PlusCircle,
+  Layers,
   type LucideIcon
 } from "lucide-react"
 import { useSession } from "next-auth/react"
@@ -173,12 +175,27 @@ export function AppSidebar() {
           if ('url' in item && item.url === '/dashboard/courses') {
             return {
               ...item,
-              items: courses.map(course => ({
-                title: course.code || `Course ${course.id}`, // Show course code or ID
-                url: `/dashboard/courses/${course.id}`,
-                icon: BookOpen,
-                status: course.status,
-              })),
+              items: [
+                {
+                  title: "Manage Courses",
+                  url: "/dashboard/courses",
+                  icon: Layers,
+                  status: "active",
+                },
+                // Separator before listing individual courses
+                {
+                  title: "", // Empty title for the separator
+                  url: "#",
+                  icon: BookOpen,
+                  status: "separator",
+                },
+                ...courses.map(course => ({
+                  title: course.code || `Course ${course.id}`, // Show course code or ID
+                  url: `/dashboard/courses/${course.id}`,
+                  icon: BookOpen,
+                  status: course.status,
+                })),
+              ],
             }
           }
           return item

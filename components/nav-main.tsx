@@ -29,6 +29,7 @@ type NavItemLink = {
     title: string
     url: string
     icon?: LucideIcon
+    status?: string
   }[]
   type?: never
 }
@@ -82,12 +83,16 @@ export function NavMain({
                     <SidebarMenuSub>
                       {item.items.map((subItem) => (
                         <SidebarMenuSubItem key={subItem.title}>
-                          <SidebarMenuSubButton asChild>
-                            <a href={subItem.url}>
-                              {subItem.icon && <subItem.icon className="h-5 w-5 shrink-0 group-data-[collapsible=icon]:mx-auto" />}
-                              <span className="truncate group-data-[collapsible=icon]:hidden">{subItem.title}</span>
-                            </a>
-                          </SidebarMenuSubButton>
+                          {subItem.status === "separator" ? (
+                            <div className="mx-2 my-1 border-t border-gray-200 dark:border-gray-700"></div>
+                          ) : (
+                            <SidebarMenuSubButton asChild>
+                              <a href={subItem.url}>
+                                {subItem.icon && <subItem.icon className="h-5 w-5 shrink-0 group-data-[collapsible=icon]:mx-auto" />}
+                                <span className="truncate group-data-[collapsible=icon]:hidden">{subItem.title}</span>
+                              </a>
+                            </SidebarMenuSubButton>
+                          )}
                         </SidebarMenuSubItem>
                       ))}
                     </SidebarMenuSub>
