@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Camera } from "lucide-react"
 import { EnhancedFaceDetectionResponse } from "@/types/lecture-room"
 import { Student } from "@/lib/data"
-import { useCallback, useState } from "react"
+import { useCallback, useState, useEffect } from "react"
 import { toast } from "sonner"
 import { CircularDialogWidget } from "./CircularDialogWidget"
 
@@ -13,6 +13,7 @@ interface VideoFeedProps {
   isVideoOn: boolean
   faceData: EnhancedFaceDetectionResponse | null
   students: Student[]
+  isSimulating?: boolean  // Add flag to indicate simulation mode
 }
 
 export function VideoFeed({
@@ -21,7 +22,8 @@ export function VideoFeed({
   detectionCanvasRef,
   isVideoOn,
   faceData,
-  students
+  students,
+  isSimulating = false
 }: VideoFeedProps) {
   // Add state to manage dialog position and clicked face
   const [dialogPosition, setDialogPosition] = useState({ x: 0, y: 0 });
@@ -30,6 +32,43 @@ export function VideoFeed({
     faceData: any;
     student: Student | null;
   } | null>(null);
+
+  // Ensure canvas resolution matches video resolution
+  useEffect(() => {
+    const setupCanvasResolution = () => {
+      if (!videoRef.current || !displayCanvasRef.current || !detectionCanvasRef.current) return;
+
+      const video = videoRef.current;
+      const displayCanvas = displayCanvasRef.current;
+      const detectionCanvas = detectionCanvasRef.current;
+
+      // Get video dimensions
+      const videoWidth = isSimulating ? 1280 : (video.videoWidth || 640);
+      const videoHeight = isSimulating ? 720 : (video.videoHeight || 480);
+
+      // Set high-resolution canvas dimensions for better quality
+      displayCanvas.width = videoWidth;
+      displayCanvas.height = videoHeight;
+      detectionCanvas.width = videoWidth;
+      detectionCanvas.height = videoHeight;
+      
+      console.log(`Canvas resolution set to: ${videoWidth}x${videoHeight}`);
+    };
+
+    // Set initial resolution
+    setupCanvasResolution();
+
+    // Update resolution when video plays (for camera feed)
+    if (videoRef.current) {
+      videoRef.current.addEventListener('playing', setupCanvasResolution);
+    }
+
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.removeEventListener('playing', setupCanvasResolution);
+      }
+    };
+  }, [videoRef, displayCanvasRef, detectionCanvasRef, isSimulating]);
 
   // Handle dialog option selection
   const handleOptionSelect = useCallback((optionValue: number) => {
@@ -187,6 +226,11 @@ export function VideoFeed({
               <div className="text-xs flex items-center gap-1 bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
                 <span className="animate-pulse">•</span>
                 <span>Click on faces for actions</span>
+                {isSimulating && (
+                  <span className="bg-blue-500 text-white px-1.5 py-0.5 rounded-sm text-[10px]">
+                    SIM
+                  </span>
+                )}
               </div>
             )}
           </CardTitle>
