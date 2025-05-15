@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { useState, useCallback } from "react";
 import {
   Dialog,
   DialogPortal,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { motion, AnimatePresence, useAnimation } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface CircularDialogWidgetProps {
   onSelect?: (segmentIndex: number) => void;
@@ -16,14 +16,14 @@ interface CircularDialogWidgetProps {
   onOpenChange?: (open: boolean) => void;
 }
 
-// Define classroom action options outside component to prevent recreation
+// Define classroom action options with minimal labels
 const classroomOptions = [
-  { id: 0, label: "Correct Answer", value: 1, icon: "✓", color: "#10b981" }, // Green
-  { id: 1, label: "Attempted", value: 2, icon: "🤔", color: "#3b82f6" }, // Blue
-  { id: 2, label: "Penalize", value: 3, icon: "✗", color: "#ef4444" }, // Red
-  { id: 3, label: "Identify", value: 4, icon: "👤", color: "#f59e0b" }, // Amber
-  { id: 4, label: "Custom Points", value: 5, icon: "⭐", color: "#8b5cf6" }, // Purple
-  { id: 5, label: "View Profile", value: 6, icon: "📊", color: "#6366f1" }  // Indigo
+  { id: 0, label: "✓", value: 1, color: "#10b981" }, 
+  { id: 1, label: "Try", value: 2, color: "#3b82f6" }, 
+  { id: 2, label: "✗", value: 3, color: "#ef4444" }, 
+  { id: 3, label: "ID", value: 4, color: "#f59e0b" }, 
+  { id: 4, label: "⭐", value: 5, color: "#8b5cf6" },
+  { id: 5, label: "Info", value: 6, color: "#6366f1" }
 ];
 
 // Pre-calculate segment data
@@ -31,44 +31,50 @@ const segments = Array.from({ length: 6 }, (_, i) => {
   // For 6 segments, we need 60 degree spacing (360/6)
   const angle = (i * 60 * Math.PI) / 180;
   const nextAngle = ((i + 1) * 60 * Math.PI) / 180;
-  const startX = 50 + 15 * Math.cos(angle);
-  const startY = 50 + 15 * Math.sin(angle);
-  const endX = 50 + 40 * Math.cos(angle);
-  const endY = 50 + 40 * Math.sin(angle);
+  
+  // Inner and outer radius
+  const innerRadius = 20;
+  const outerRadius = 45;
+  
+  const startX = 50 + innerRadius * Math.cos(angle);
+  const startY = 50 + innerRadius * Math.sin(angle);
+  const endX = 50 + outerRadius * Math.cos(angle);
+  const endY = 50 + outerRadius * Math.sin(angle);
   
   // Position text in the center of each segment (30 degrees = Math.PI/6)
   const textAngle = angle + Math.PI/6;
-  const textRadius = 28;
+  const textRadius = 32;
   const textX = 50 + textRadius * Math.cos(textAngle);
   const textY = 50 + textRadius * Math.sin(textAngle);
   
   // Pre-calculate path data
-  const nextStartX = 50 + 15 * Math.cos(nextAngle);
-  const nextStartY = 50 + 15 * Math.sin(nextAngle);
-  const nextEndX = 50 + 40 * Math.cos(nextAngle);
-  const nextEndY = 50 + 40 * Math.sin(nextAngle);
+  const nextStartX = 50 + innerRadius * Math.cos(nextAngle);
+  const nextStartY = 50 + innerRadius * Math.sin(nextAngle);
+  const nextEndX = 50 + outerRadius * Math.cos(nextAngle);
+  const nextEndY = 50 + outerRadius * Math.sin(nextAngle);
   
-  const pathD = `M ${startX} ${startY} L ${endX} ${endY} A 40 40 0 0 1 ${nextEndX} ${nextEndY} L ${nextStartX} ${nextStartY} A 15 15 0 0 0 ${startX} ${startY} Z`;
+  // Use arc command for rounded outer edge
+  const pathD = `M ${startX} ${startY} 
+                 L ${endX} ${endY} 
+                 A ${outerRadius} ${outerRadius} 0 0 1 ${nextEndX} ${nextEndY} 
+                 L ${nextStartX} ${nextStartY} 
+                 A ${innerRadius} ${innerRadius} 0 0 0 ${startX} ${startY} Z`;
   
   return {
     id: i,
-    startX,
-    startY,
-    endX,
-    endY,
+    pathD,
     textX,
     textY,
-    pathD,
     option: classroomOptions[i]
   };
 });
 
-// Simplified animation constants
-const T = 0.3; // Faster timing
+// Animation constants
+const T = 0.2; // Fast timing
 
 export function CircularDialogWidget({ 
   onSelect, 
-  trigger = <Button className="bg-purple-600 hover:bg-purple-700">Choose Action</Button>,
+  trigger = <Button className="bg-purple-600 hover:bg-purple-700">Actions</Button>,
   isOpen,
   onOpenChange
 }: CircularDialogWidgetProps) {
@@ -86,31 +92,26 @@ export function CircularDialogWidget({
   const [hoveredSegment, setHoveredSegment] = useState<number | null>(null);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
-  const controls = useAnimation();
   
-  // Skip the continuous rotation animation - it adds to lag
-  
-  // Optimized with useCallback to prevent recreation on renders
+  // Handle segment click
   const handleSegmentClick = useCallback((segmentIndex: number) => {
     const option = classroomOptions[segmentIndex];
     
-    // Show toast with classroom action and value
-    setToastMessage(`${option.label} (${option.value})`);
+    // Show toast with action
+    setToastMessage(`${option.label} action applied`);
     setShowToast(true);
     
-    // Call callback with the option value instead of segment index
+    // Call callback with the option value
     if (onSelect) {
       onSelect(option.value);
     }
-    
-    // Skip the feedback animation for better performance
     
     // Close dialog immediately
     setIsDialogOpen(false);
     setTimeout(() => setShowToast(false), 800);
   }, [onSelect]);
 
-  // Optimized hover handling
+  // Handle hover
   const handleSegmentHover = useCallback((segmentIndex: number) => {
     setHoveredSegment(segmentIndex);
   }, []);
@@ -118,34 +119,6 @@ export function CircularDialogWidget({
   const handleSegmentHoverEnd = useCallback(() => {
     setHoveredSegment(null);
   }, []);
-
-  // Optimized variants with simpler animations
-  const circleVariants = {
-    hidden: { scale: 0, opacity: 0 },
-    visible: { 
-      scale: 1,
-      opacity: 1,
-      transition: { 
-        duration: T,
-        ease: "easeOut",
-        when: "beforeChildren",
-        staggerChildren: 0.005 // Faster staggering
-      }
-    },
-    exit: { 
-      scale: 0,
-      opacity: 0,
-      transition: { duration: T * 0.8 }
-    }
-  };
-
-  const segmentVariants = {
-    hidden: { opacity: 0 },
-    visible: { 
-      opacity: 1,
-      transition: { duration: T * 0.5 }
-    },
-  };
 
   return (
     <>
@@ -157,104 +130,62 @@ export function CircularDialogWidget({
           <AnimatePresence>
             {isDialogOpen && (
               <motion.div 
-                className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: T * 0.5 }}
+                transition={{ duration: T }}
                 onClick={() => setIsDialogOpen(false)}
               >
                 <motion.div 
                   className="relative z-[60]"
                   onClick={(e) => e.stopPropagation()}
-                  variants={circleVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  transition={{ duration: T }}
                 >
-                  <svg width="300" height="300" viewBox="0 0 100 100" className="cursor-pointer">
-                    {/* Outer circle - static (not animated) for better performance */}
+                  <svg width="270" height="270" viewBox="0 0 100 100" className="cursor-pointer">
+                    {/* Plain white background */}
                     <circle 
                       cx="50" 
                       cy="50" 
-                      r="40" 
-                      stroke="#8b5cf6" 
-                      strokeWidth="0.8" 
+                      r="45" 
                       fill="white" 
+                      stroke="#e5e7eb"
+                      strokeWidth="0.5"
                     />
                     
-                    {/* Inner circle - static */}
-                    <circle 
-                      cx="50" 
-                      cy="50" 
-                      r="15" 
-                      stroke="#8b5cf6" 
-                      strokeWidth="0.8" 
-                      fill="white"
-                    />
-                    
-                    {/* Center text */}
+                    {/* Center text - minimal */}
                     <text
                       x="50"
                       y="50"
                       fill="#6d28d9"
-                      fontSize="3.5"
+                      fontSize="4"
                       fontWeight="bold"
                       textAnchor="middle"
                       dominantBaseline="middle"
                     >
-                      Student Actions
+                      Actions
                     </text>
                     
-                    {/* Division lines - static */}
-                    <line 
-                      x1="50" 
-                      y1="10" 
-                      x2="50" 
-                      y2="35" 
-                      stroke="#8b5cf6" 
-                      strokeWidth="0.8"
-                    />
-                    <line 
-                      x1="50" 
-                      y1="90" 
-                      x2="50" 
-                      y2="65" 
-                      stroke="#8b5cf6" 
-                      strokeWidth="0.8"
-                    />
-                    
-                    {/* Pre-calculated segments */}
+                    {/* Segments */}
                     {segments.map((segment) => {
                       const isHovered = hoveredSegment === segment.id;
                       const option = segment.option;
                       
                       return (
-                        <motion.g 
-                          key={segment.id}
-                          variants={segmentVariants}
-                          initial="hidden"
-                          animate="visible"
-                        >
-                          {/* Division line */}
-                          <line 
-                            x1={segment.startX} 
-                            y1={segment.startY} 
-                            x2={segment.endX} 
-                            y2={segment.endY} 
-                            stroke="#8b5cf6" 
-                            strokeWidth="0.8"
-                          />
-                          
+                        <g key={segment.id}>
                           {/* Clickable segment */}
                           <path 
                             d={segment.pathD}
                             style={{ 
-                              fill: isHovered ? option.color + "33" : "white", // Add transparency to color when hovered
+                              fill: isHovered ? `${option.color}20` : "transparent",
                               cursor: 'pointer',
-                              transition: "fill 0.1s ease"
+                              transition: "all 0.1s ease",
+                              stroke: isHovered ? option.color : "#e5e7eb",
+                              strokeWidth: "0.5"
                             }}
-                            stroke="transparent"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleSegmentClick(segment.id);
@@ -263,23 +194,12 @@ export function CircularDialogWidget({
                             onMouseLeave={handleSegmentHoverEnd}
                           />
 
-                          {/* Option icon */}
+                          {/* Minimalist label */}
                           <text
                             x={segment.textX}
-                            y={segment.textY - 2.5}
+                            y={segment.textY}
+                            fill={isHovered ? option.color : "#4b5563"}
                             fontSize="5"
-                            textAnchor="middle"
-                            dominantBaseline="middle"
-                          >
-                            {option.icon}
-                          </text>
-
-                          {/* Option text */}
-                          <text
-                            x={segment.textX}
-                            y={segment.textY + 4}
-                            fill={isHovered ? option.color : "#8b5cf6"}
-                            fontSize="2.5"
                             fontWeight="bold"
                             textAnchor="middle"
                             dominantBaseline="middle"
@@ -287,7 +207,7 @@ export function CircularDialogWidget({
                           >
                             {option.label}
                           </text>
-                        </motion.g>
+                        </g>
                       );
                     })}
                   </svg>
@@ -298,22 +218,17 @@ export function CircularDialogWidget({
         </DialogPortal>
       </Dialog>
 
-      {/* Simplified Toast */}
+      {/* Minimal Toast */}
       <AnimatePresence>
         {showToast && (
           <motion.div
-            className="fixed bottom-8 right-8 z-50 bg-purple-800 text-white px-6 py-3 rounded-lg shadow-lg"
+            className="fixed bottom-8 right-8 z-50 bg-gray-800 text-white px-4 py-2 rounded-md shadow"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.15 }}
           >
-            <div className="flex items-center space-x-3">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-purple-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              <p>{toastMessage}</p>
-            </div>
+            {toastMessage}
           </motion.div>
         )}
       </AnimatePresence>
