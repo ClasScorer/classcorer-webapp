@@ -235,7 +235,10 @@ export function useFaceDetection({
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
     }
     
-    // Draw each face box
+    // Create a cache for the avatar image to avoid reloading for each face
+    let avatarImage: HTMLImageElement | null = null
+
+    // Draw each face with an avatar instead of a box
     faceData.faces.forEach(face => {
       const { x, y, width, height } = face.bounding_box
       
@@ -247,42 +250,114 @@ export function useFaceDetection({
       
       // Set styles based on attention status
       const color = face.attention_status === "focused" ? '#4CAF50' : '#F44336'
-      ctx.strokeStyle = color
-      ctx.lineWidth = 3
-      
-      // Draw the bounding box rectangle
-      ctx.strokeRect(boxX, boxY, boxWidth, boxHeight)
-      
-      // Draw hand raised indicator if applicable
-      if (face.hand_raising_status.is_hand_raised) {
-        ctx.fillStyle = 'rgba(255, 193, 7, 0.8)'
+
+      // Load the avatar image if it's not already loaded
+      if (!avatarImage) {
+        avatarImage = new Image()
+        avatarImage.src = '/avataaars.svg'
+      }
+
+      // Draw the avatar image if loaded
+      if (avatarImage.complete) {
+        renderAvatar()
+      } else {
+        // Set up a callback to render the avatar once the image loads
+        avatarImage.onload = renderAvatar
+      }
+
+      function renderAvatar() {
+        if (!ctx || !avatarImage) return
+
+        // Calculate a size that fits within the bounding box but maintains aspect ratio
+        const avatarAspectRatio = 264 / 280 // width/height of the SVG
+        const avatarHeight = boxHeight * 1.2 // Make it slightly larger than the box
+        const avatarWidth = avatarHeight * avatarAspectRatio
+
+        // Center the avatar on the face
+        const avatarX = boxX + (boxWidth - avatarWidth) / 2
+        const avatarY = boxY - avatarHeight * 0.2 // Position slightly above the actual face detection
+
+        // Draw avatar with a clip path for better visibility
+        ctx.save()
+        
+        // Add drop shadow for better visibility
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.3)'
+        ctx.shadowBlur = 10
+        ctx.shadowOffsetX = 0
+        ctx.shadowOffsetY = 2
+        
+        // Draw the avatar
+        ctx.drawImage(avatarImage, avatarX, avatarY, avatarWidth, avatarHeight)
+        ctx.restore()
+        
+        // Draw status indicators and labels on top of the avatar
+
+        // Add attention status indicator at the top
+        const indicatorSize = boxWidth * 0.15
         ctx.beginPath()
         ctx.arc(
-          boxX + boxWidth - 10, 
-          boxY + 10, 
-          8, 0, 2 * Math.PI
+          boxX + boxWidth / 2, 
+          avatarY - indicatorSize / 2, 
+          indicatorSize, 0, 2 * Math.PI
         )
+        ctx.fillStyle = color
         ctx.fill()
+        ctx.strokeStyle = 'white'
+        ctx.lineWidth = 2
+        ctx.stroke()
+
+        // Draw hand raised indicator if applicable
+        if (face.hand_raising_status.is_hand_raised) {
+          ctx.fillStyle = 'rgba(255, 193, 7, 0.9)'
+          ctx.beginPath()
+          ctx.arc(
+            boxX + boxWidth + indicatorSize / 2, 
+            boxY + indicatorSize, 
+            indicatorSize, 0, 2 * Math.PI
+          )
+          ctx.fill()
+          ctx.strokeStyle = 'white'
+          ctx.lineWidth = 1
+          ctx.stroke()
+          
+          // Add hand emoji
+          ctx.font = `${indicatorSize}px Arial`
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.fillStyle = 'white'
+          ctx.fillText('✋', boxX + boxWidth + indicatorSize / 2, boxY + indicatorSize)
+        }
+        
+        // Add label text with background for better visibility
+        const studentId = face.person_id
+        const student = students.find(s => s.id === studentId)
+        let label = 'Unknown'
+        
+        if (face.recognition_status === "known") {
+          label = student ? student.name : `Person ${face.person_id}`
+        } else if (face.recognition_status === "new") {
+          label = `New Face (${Math.round((face.confidence || 0.5) * 100)}%)`
+        }
+        
+        // Draw name tag at the bottom of the avatar
+        const labelPadding = 6
+        const labelHeight = 22
+        const labelWidth = ctx.measureText(label).width + labelPadding * 2
+        const labelX = boxX + (boxWidth - labelWidth) / 2
+        const labelY = avatarY + avatarHeight
+        
+        // Draw label background
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
+        ctx.roundRect(labelX, labelY, labelWidth, labelHeight, 4)
+        ctx.fill()
+        
+        // Draw label text
+        ctx.fillStyle = '#FFFFFF'
+        ctx.font = 'bold 12px Arial'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(label, boxX + boxWidth / 2, labelY + labelHeight / 2)
       }
-      
-      // Add label background for better visibility
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
-      ctx.fillRect(boxX, boxY - 25, boxWidth, 20)
-      
-      // Add label text
-      const studentId = face.person_id
-      const student = students.find(s => s.id === studentId)
-      let label = 'Unknown'
-      
-      if (face.recognition_status === "known") {
-        label = student ? student.name : `Person ${face.person_id}`
-      } else if (face.recognition_status === "new") {
-        label = `New Face (${Math.round((face.confidence || 0.5) * 100)}%)`
-      }
-      
-      ctx.fillStyle = '#FFFFFF'
-      ctx.font = '12px Arial'
-      ctx.fillText(label, boxX + 5, boxY - 10)
     })
   }, [faceData, students, isVideoOn, videoRef])
 
@@ -429,6 +504,24 @@ export function useFaceDetection({
       }
     }
   }, [faceData, drawFaceBoxes, isVideoOn])
+
+  // Add a polyfill for roundRect if it's not available
+  useEffect(() => {
+    if (!CanvasRenderingContext2D.prototype.roundRect) {
+      CanvasRenderingContext2D.prototype.roundRect = function(x, y, width, height, radius) {
+        if (width < 2 * radius) radius = width / 2
+        if (height < 2 * radius) radius = height / 2
+        this.beginPath()
+        this.moveTo(x + radius, y)
+        this.arcTo(x + width, y, x + width, y + height, radius)
+        this.arcTo(x + width, y + height, x, y + height, radius)
+        this.arcTo(x, y + height, x, y, radius)
+        this.arcTo(x, y, x + width, y, radius)
+        this.closePath()
+        return this
+      }
+    }
+  }, [])
 
   return {
     isDetecting,
