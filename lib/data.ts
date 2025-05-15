@@ -255,6 +255,11 @@ export const getTopStudents = (): Student[] => {
     .slice(0, 5);
 };
 
+// ====================================================
+// SERVER-SIDE ONLY FUNCTIONS - DO NOT USE IN CLIENT COMPONENTS
+// These functions directly access Prisma and will break if used in client components
+// ====================================================
+
 // Data loading functions - now using the database directly
 export async function loadCourses(): Promise<Course[]> {
   try {
@@ -589,6 +594,15 @@ export async function getStudentsByCourse(courseId: string): Promise<Student[]> 
 
 export async function getCourseById(id: string): Promise<Course | null> {
   try {
+    // First check the cache by loading courses
+    const cachedCourses = await loadCourses();
+    const cachedCourse = cachedCourses.find(c => c.id === id);
+    if (cachedCourse) {
+      console.log(`Found course ${id} in cache`);
+      return cachedCourse;
+    }
+    
+    // If not in cache, try direct API call
     const baseUrl = getBaseUrl();
     const res = await fetch(`${baseUrl}/api/courses/${id}`, {
       method: 'GET',
@@ -601,6 +615,7 @@ export async function getCourseById(id: string): Promise<Course | null> {
 
     if (!res.ok) {
       if (res.status === 404) {
+        console.warn(`Course ${id} not found`);
         return null;
       }
       const errorData = await res.json().catch(() => ({}));
@@ -612,8 +627,8 @@ export async function getCourseById(id: string): Promise<Course | null> {
     const course = await res.json();
     return transformCourseData(course);
   } catch (error) {
-    console.error("Error in getCourseById:", error);
-    throw new Error(`Failed to get course: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`Error in getCourseById for ${id}:`, error);
+    return null;
   }
 }
 
@@ -650,6 +665,11 @@ export async function getEventsByCourse(courseId: string): Promise<any[]> {
   const events = await fetchCalendarEvents();
   return events.filter((event: any) => event.courseId === courseId);
 }
+
+// ====================================================
+// CLIENT-SAFE FUNCTIONS - Safe to use in both client and server components
+// These use fetch API calls instead of direct Prisma access
+// ====================================================
 
 // Utility functions
 export function formatPercentage(value: number): string {
@@ -702,6 +722,37 @@ export async function fetchCourses() {
   } catch (error) {
     console.error("Error fetching courses:", error);
     throw error;
+  }
+}
+
+export async function fetchCourseById(id: string) {
+  const baseUrl = getBaseUrl();
+  try {
+    const res = await fetch(`${baseUrl}/api/courses/${id}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store'
+    });
+    
+    if (!res.ok) {
+      if (res.status === 404) {
+        console.warn(`Course ${id} not found`);
+        return null;
+      }
+      const errorData = await res.json().catch(() => ({}));
+      const errorMessage = errorData.error || `Failed to fetch course: ${res.status} ${res.statusText}`;
+      console.error(errorMessage);
+      throw new Error(errorMessage);
+    }
+    
+    const course = await res.json();
+    return course;
+  } catch (error) {
+    console.error(`Error in fetchCourseById for ${id}:`, error);
+    return null;
   }
 }
 
