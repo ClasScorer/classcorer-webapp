@@ -5,15 +5,24 @@ import {
   Dialog,
   DialogPortal,
   DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 
 interface CircularDialogWidgetProps {
   onSelect?: (segmentIndex: number) => void;
   trigger?: React.ReactNode;
   isOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
+  boundingBoxRef?: React.RefObject<HTMLCanvasElement>; // Canvas reference for bounding box data
 }
 
 // Define classroom action options with enhanced labels and descriptions
@@ -78,11 +87,23 @@ export function CircularDialogWidget({
   onSelect, 
   trigger = <Button className="bg-purple-600 hover:bg-purple-700 shadow-md hover:shadow-lg transition-all">Actions</Button>,
   isOpen,
-  onOpenChange
+  onOpenChange,
+  boundingBoxRef
 }: CircularDialogWidgetProps) {
   const [isInternalDialogOpen, setIsInternalDialogOpen] = useState(false);
   const [activeAnimation, setActiveAnimation] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // State for the associate dialog
+  const [isAssociateDialogOpen, setIsAssociateDialogOpen] = useState(false);
+  const [personId, setPersonId] = useState("");
+  const [isAssociateLoading, setIsAssociateLoading] = useState(false);
+  const [boundingBoxData, setBoundingBoxData] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
   
   // Determine if dialog is controlled externally or internally
   const isDialogOpen = isOpen !== undefined ? isOpen : isInternalDialogOpen;
@@ -112,6 +133,63 @@ export function CircularDialogWidget({
     };
   }, []);
 
+  // Function to get bounding box data from canvas
+  const getBoundingBoxFromCanvas = useCallback(() => {
+    if (!boundingBoxRef?.current) return null;
+    
+    // In a real implementation, this would get the actual bounding box data from the canvas
+    // For now, we'll use a placeholder example with the canvas dimensions
+    const canvas = boundingBoxRef.current;
+    return {
+      x: Math.round(canvas.width * 0.25),
+      y: Math.round(canvas.height * 0.25),
+      width: Math.round(canvas.width * 0.5),
+      height: Math.round(canvas.height * 0.5),
+    };
+  }, [boundingBoxRef]);
+
+  // Function to handle associate request
+  const handleAssociateRequest = useCallback(async () => {
+    if (!personId.trim() || !boundingBoxData) {
+      toast.error("Person ID and bounding box are required");
+      return;
+    }
+
+    setIsAssociateLoading(true);
+    
+    try {
+      // Prepare data for the API request
+      const formData = new FormData();
+      formData.append('person_id', personId);
+      formData.append('x', boundingBoxData.x.toString());
+      formData.append('y', boundingBoxData.y.toString());
+      formData.append('width', boundingBoxData.width.toString());
+      formData.append('height', boundingBoxData.height.toString());
+      
+      // Make the API request
+      const response = await fetch("/api/register-face", {
+        method: "POST",
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Server responded with ${response.status}`);
+      }
+      
+      const result = await response.json();
+      console.log("Face registration result:", result);
+      
+      toast.success(`Successfully associated face with ID: ${personId}`);
+      setIsAssociateDialogOpen(false);
+      setPersonId("");
+    } catch (error) {
+      console.error("Error registering face:", error);
+      toast.error(`Failed to register face: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsAssociateLoading(false);
+    }
+  }, [personId, boundingBoxData]);
+
   // Handle segment click with animation
   const handleSegmentClick = useCallback((segmentIndex: number) => {
     const option = classroomOptions[segmentIndex];
@@ -119,6 +197,29 @@ export function CircularDialogWidget({
     // Set selected segment for animation
     setSelectedSegment(segmentIndex);
     
+    // Special handling for Associate action
+    if (segmentIndex === 6) { // Associate
+      // Get bounding box data from canvas
+      const boxData = getBoundingBoxFromCanvas();
+      if (boxData) {
+        setBoundingBoxData(boxData);
+        
+        // Close the wheel dialog and open the associate dialog
+        setIsDialogOpen(false);
+        setSelectedSegment(null);
+        
+        // Slight delay to allow the wheel dialog to close
+        setTimeout(() => {
+          setIsAssociateDialogOpen(true);
+        }, 300);
+      } else {
+        toast.error("No canvas or bounding box available");
+        setSelectedSegment(null);
+      }
+      return;
+    }
+    
+    // For other actions, continue with standard flow
     // Delay dialog close to show the selection animation
     timeoutRef.current = setTimeout(() => {
       // Show toast with action
@@ -137,7 +238,7 @@ export function CircularDialogWidget({
       // Hide toast after delay
       timeoutRef.current = setTimeout(() => setShowToast(false), 1500);
     }, 300);
-  }, [onSelect, setIsDialogOpen]);
+  }, [onSelect, setIsDialogOpen, getBoundingBoxFromCanvas]);
 
   // Handle hover
   const handleSegmentHover = useCallback((segmentIndex: number) => {
@@ -334,6 +435,51 @@ export function CircularDialogWidget({
             )}
           </AnimatePresence>
         </DialogPortal>
+      </Dialog>
+
+      {/* Associate Dialog */}
+      <Dialog open={isAssociateDialogOpen} onOpenChange={setIsAssociateDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Associate Face</DialogTitle>
+            <DialogDescription>
+              Enter a person ID to associate with the selected face.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="person-id">Person ID</Label>
+              <Input 
+                id="person-id" 
+                value={personId} 
+                onChange={(e) => setPersonId(e.target.value)}
+                placeholder="Enter an ID (e.g., student_123)"
+                className="col-span-3"
+              />
+            </div>
+            
+            {boundingBoxData && (
+              <div className="text-xs text-gray-500 border rounded p-2 bg-gray-50">
+                <p>Position: X={boundingBoxData.x}, Y={boundingBoxData.y}</p>
+                <p>Size: {boundingBoxData.width}×{boundingBoxData.height}</p>
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAssociateDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleAssociateRequest}
+              disabled={isAssociateLoading || !personId.trim()}
+              className="bg-teal-600 hover:bg-teal-700"
+            >
+              {isAssociateLoading ? "Processing..." : "Associate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
 
       {/* Enhanced toast notification */}

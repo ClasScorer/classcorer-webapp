@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Camera } from "lucide-react"
 import { EnhancedFaceDetectionResponse } from "@/types/lecture-room"
 import { Student } from "@/lib/data"
-import { useCallback, useState, useEffect } from "react"
+import { useCallback, useState, useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { CircularDialogWidget } from "./CircularDialogWidget"
 
@@ -32,15 +32,19 @@ export function VideoFeed({
     faceData: any;
     student: Student | null;
   } | null>(null);
+  
+  // Create ref for the invisible bounding box canvas
+  const boundingBoxCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Ensure canvas resolution matches video resolution
   useEffect(() => {
     const setupCanvasResolution = () => {
-      if (!videoRef.current || !displayCanvasRef.current || !detectionCanvasRef.current) return;
+      if (!videoRef.current || !displayCanvasRef.current || !detectionCanvasRef.current || !boundingBoxCanvasRef.current) return;
 
       const video = videoRef.current;
       const displayCanvas = displayCanvasRef.current;
       const detectionCanvas = detectionCanvasRef.current;
+      const boundingBoxCanvas = boundingBoxCanvasRef.current;
 
       // Get video dimensions
       const videoWidth = isSimulating ? 1280 : (video.videoWidth || 640);
@@ -51,6 +55,8 @@ export function VideoFeed({
       displayCanvas.height = videoHeight;
       detectionCanvas.width = videoWidth;
       detectionCanvas.height = videoHeight;
+      boundingBoxCanvas.width = videoWidth;
+      boundingBoxCanvas.height = videoHeight;
       
       console.log(`Canvas resolution set to: ${videoWidth}x${videoHeight}`);
     };
@@ -69,6 +75,45 @@ export function VideoFeed({
       }
     };
   }, [videoRef, displayCanvasRef, detectionCanvasRef, isSimulating]);
+
+  // Draw bounding boxes on the invisible canvas
+  useEffect(() => {
+    const drawBoundingBoxes = () => {
+      if (!faceData || !boundingBoxCanvasRef.current) return;
+
+      const canvas = boundingBoxCanvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Clear previous drawings
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw invisible rectangles for each face
+      faceData.faces.forEach(face => {
+        const { x, y, width, height } = face.bounding_box;
+        
+        // Convert normalized coordinates to pixel values
+        const pixelX = x * canvas.width;
+        const pixelY = y * canvas.height;
+        const pixelWidth = width * canvas.width;
+        const pixelHeight = height * canvas.height;
+        
+        // Draw an invisible rectangle (using transparent fill)
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.01)'; // Nearly invisible
+        ctx.fillRect(pixelX, pixelY, pixelWidth, pixelHeight);
+        
+        // Store metadata with the rectangle
+        // (This doesn't actually draw anything, but we're conceptually
+        // associating this data with the region for our own reference)
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0)';
+        ctx.rect(pixelX, pixelY, pixelWidth, pixelHeight);
+        ctx.restore();
+      });
+    };
+
+    drawBoundingBoxes();
+  }, [faceData]);
 
   // Handle dialog option selection
   const handleOptionSelect = useCallback((optionValue: number) => {
@@ -245,6 +290,13 @@ export function VideoFeed({
               className="w-full h-full object-cover"
             />
             
+            {/* Invisible bounding box canvas that sits behind avatar SVGs */}
+            <canvas
+              ref={boundingBoxCanvasRef}
+              className="absolute top-0 left-0 w-full h-full pointer-events-none"
+              style={{ opacity: 0 }} // Make it completely invisible
+            />
+            
             <canvas
               ref={displayCanvasRef}
               className="absolute top-0 left-0 w-full h-full"
@@ -336,6 +388,7 @@ export function VideoFeed({
           onOpenChange={setIsDialogOpen}
           onSelect={handleOptionSelect}
           trigger={<div className="w-1 h-1" />}
+          boundingBoxRef={boundingBoxCanvasRef}
         />
       </div>
     </>
