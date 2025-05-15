@@ -1,5 +1,4 @@
-# Build stage
-FROM node:20-alpine AS builder
+FROM node:20-alpine
 
 # Set working directory
 WORKDIR /app
@@ -7,41 +6,21 @@ WORKDIR /app
 # Install dependencies for node-gyp and Prisma
 RUN apk add --no-cache python3 make g++ libc6-compat
 
-# Copy package files first for better caching
+# Copy package files
 COPY package*.json ./
-# Use legacy-peer-deps to bypass the React version conflict
+
+# Install dependencies with legacy-peer-deps to bypass React version conflicts
 RUN npm ci --legacy-peer-deps
 
-# Copy application code
-COPY . .
-
 # Generate Prisma client
+COPY prisma ./prisma/
 RUN npx prisma generate
 
-# Build the application
-RUN npm run build
-
-# Production stage
-FROM node:20-alpine AS runner
-
-WORKDIR /app
-
-# Install only production dependencies
-RUN apk add --no-cache libc6-compat
-
-# Copy necessary files from build stage
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/prisma ./prisma
-
-# Set environment variables
-ENV NODE_ENV=production
-ENV PORT=3000
+# Copy remaining app files
+COPY . .
 
 # Expose the port
 EXPOSE 3000
 
-# Start the application
-CMD ["npm", "start"]
+# Use development command
+CMD ["npm", "run", "dev"] 
