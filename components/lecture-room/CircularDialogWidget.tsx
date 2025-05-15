@@ -23,14 +23,16 @@ const classroomOptions = [
   { id: 2, label: "✗", description: "Incorrect", value: 3, color: "#ef4444", icon: "✗" }, 
   { id: 3, label: "ID", description: "Verify", value: 4, color: "#f59e0b", icon: "ID" }, 
   { id: 4, label: "⭐", description: "Award", value: 5, color: "#8b5cf6", icon: "⭐" },
-  { id: 5, label: "Info", description: "Details", value: 6, color: "#6366f1", icon: "ℹ" }
+  { id: 5, label: "Info", description: "Details", value: 6, color: "#6366f1", icon: "ℹ" },
+  { id: 6, label: "Assoc", description: "Associate", value: 7, color: "#14b8a6", icon: "🔗" },
+  { id: 7, label: "Add", description: "Add", value: 8, color: "#ec4899", icon: "+" }
 ];
 
 // Pre-calculate segment data with enhanced visual properties
-const segments = Array.from({ length: 6 }, (_, i) => {
-  // For 6 segments, we need 60 degree spacing (360/6)
-  const angle = (i * 60 * Math.PI) / 180;
-  const nextAngle = ((i + 1) * 60 * Math.PI) / 180;
+const segments = Array.from({ length: 8 }, (_, i) => {
+  // For 8 segments, we need 45 degree spacing (360/8)
+  const angle = (i * 45 * Math.PI) / 180;
+  const nextAngle = ((i + 1) * 45 * Math.PI) / 180;
   
   // Enhanced inner and outer radius for better proportions
   const innerRadius = 22;
@@ -41,8 +43,8 @@ const segments = Array.from({ length: 6 }, (_, i) => {
   const endX = 50 + outerRadius * Math.cos(angle);
   const endY = 50 + outerRadius * Math.sin(angle);
   
-  // Position text in the center of each segment (30 degrees = Math.PI/6)
-  const textAngle = angle + Math.PI/6;
+  // Position text in the center of each segment (22.5 degrees = Math.PI/8)
+  const textAngle = angle + Math.PI/8;
   const textRadius = 35;
   const textX = 50 + textRadius * Math.cos(textAngle);
   const textY = 50 + textRadius * Math.sin(textAngle);
