@@ -56,4 +56,4 @@ For the deployment workflow to function properly, you need to set up the followi
 
 ## Local Testing
 
-You can test these workflows locally using [act](https://github.com/nektos/act), a tool for running GitHub Actions locally. 
+You can test these workflows locally using [act](https://github.com/nektos/act), a tool for running GitHub Actions locally.

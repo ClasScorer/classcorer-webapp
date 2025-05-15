@@ -2,8 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Camera } from "lucide-react"
 import { EnhancedFaceDetectionResponse } from "@/types/lecture-room"
 import { Student } from "@/lib/data"
-import { useCallback } from "react"
+import { useCallback, useState } from "react"
 import { toast } from "sonner"
+import { CircularDialogWidget } from "./CircularDialogWidget"
 
 interface VideoFeedProps {
   videoRef: React.RefObject<HTMLVideoElement>
@@ -22,6 +23,103 @@ export function VideoFeed({
   faceData,
   students
 }: VideoFeedProps) {
+  // Add state to manage dialog position and clicked face
+  const [dialogPosition, setDialogPosition] = useState({ x: 0, y: 0 });
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [clickedFace, setClickedFace] = useState<{
+    faceData: any;
+    student: Student | null;
+  } | null>(null);
+
+  // Handle dialog option selection
+  const handleOptionSelect = useCallback((optionValue: number) => {
+    if (!clickedFace) return;
+    
+    const { faceData, student } = clickedFace;
+    const studentName = student ? student.name : "Unknown Student";
+    const studentId = student ? student.id : faceData.person_id;
+    const isHandRaised = faceData.hand_raising_status?.is_hand_raised || false;
+    const focusScore = faceData.attentionMetrics?.focusScore || 0;
+    const attentionStatus = faceData.attention_status || 'unknown';
+    
+    // Record the action in the database (stub for now)
+    const recordStudentAction = async (action: string, points: number, details: string) => {
+      // This would be an API call in a real implementation
+      try {
+        console.log(`Recording action: ${action} for student ${studentId}, points: ${points}, details: ${details}`);
+        
+        // Simulate API call to record the action
+        // await fetch('/api/student-actions', {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   body: JSON.stringify({
+        //     studentId,
+        //     action,
+        //     points,
+        //     details,
+        //     timestamp: new Date().toISOString()
+        //   })
+        // });
+        
+        return true;
+      } catch (error) {
+        console.error('Error recording student action:', error);
+        toast.error('Failed to record action');
+        return false;
+      }
+    };
+    
+    // Handle the selected option
+    switch (optionValue) {
+      case 1: // Correct Answer
+        toast.success(`${studentName} - Awarded points for correct answer`, {
+          description: `Focus: ${focusScore}%, ${isHandRaised ? 'Hand was raised' : 'Hand was not raised'}`,
+          duration: 3000,
+        });
+        recordStudentAction('correct_answer', 10, `Attention: ${attentionStatus}`);
+        break;
+      case 2: // Attempted Answer
+        toast.info(`${studentName} - Awarded points for attempt`, {
+          description: `Focus: ${focusScore}%, ${isHandRaised ? 'Hand was raised' : 'Hand was not raised'}`,
+          duration: 3000,
+        });
+        recordStudentAction('attempted_answer', 5, `Attention: ${attentionStatus}`);
+        break;
+      case 3: // Penalize
+        toast.error(`${studentName} - Penalized`, {
+          description: `Focus: ${focusScore}%, Attention: ${attentionStatus}`,
+          duration: 3000,
+        });
+        recordStudentAction('penalize', -5, `Low focus: ${focusScore}%`);
+        break;
+      case 4: // Identify Student
+        toast.info(`Student identified: ${studentName}`, {
+          description: `ID: ${studentId}, Recognition status: ${faceData.recognition_status}`,
+          duration: 4000,
+        });
+        recordStudentAction('identify', 0, `Manual identification in lecture`);
+        break;
+      case 5: // Custom Points
+        const points = 3; // In a real implementation, this would be from a dialog
+        toast.info(`Custom points for ${studentName}: +${points}`, {
+          description: `Focus: ${focusScore}%, Attention: ${attentionStatus}`,
+          duration: 3000,
+        });
+        recordStudentAction('custom_points', points, `Manual award during lecture`);
+        break;
+      case 6: // View Profile
+        toast.info(`Viewing profile for ${studentName}`, {
+          description: `Opening student profile in a new tab`,
+          duration: 3000,
+        });
+        // In a real implementation, this might open a modal or navigate to the student profile
+        recordStudentAction('view_profile', 0, `Profile viewed during lecture`);
+        break;
+      default:
+        break;
+    }
+  }, [clickedFace]);
+
   // Add this function to handle canvas clicks on face boxes
   const handleCanvasClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!faceData || !displayCanvasRef.current || !videoRef.current) return
@@ -56,74 +154,146 @@ export function VideoFeed({
         clickY >= pixelY && 
         clickY <= pixelY + pixelHeight
       ) {
+        // Set dialog position at the click point
+        setDialogPosition({ x: event.clientX, y: event.clientY });
+        
         // Find student info
+        let student = null;
         if (face.recognition_status === "known") {
           // Check if students array exists and is not empty
           if (students && students.length > 0) {
-            const student = students.find(s => s.id === face.person_id)
-            if (student) {
-              toast.info(`${student.name} - ${face.attention_status}`, {
-                description: face.hand_raising_status.is_hand_raised ? 
-                  "Hand is raised" : 
-                  `Focus score: ${face.attentionMetrics?.focusScore || 0}%`
-              })
-              return
-            }
+            student = students.find(s => s.id === face.person_id) || null;
           }
-          // If student not found or no students array
-          toast.info(`Student ID: ${face.person_id}`, {
-            description: face.hand_raising_status.is_hand_raised ? 
-              "Hand is raised" : 
-              `Focus score: ${face.attentionMetrics?.focusScore || 0}%`
-          })
-          return
-        } else {
-          toast.info("Unrecognized Student", {
-            description: "This student hasn't been identified yet"
-          })
-          return
         }
+        
+        // Store the clicked face data
+        setClickedFace({ faceData: face, student });
+        
+        // Open the dialog
+        setIsDialogOpen(true);
+        return;
       }
     }
-  }, [faceData, students, videoRef, displayCanvasRef])
+  }, [faceData, students, videoRef, displayCanvasRef]);
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-lg">Camera Feed</CardTitle>
-      </CardHeader>
-      <CardContent className="p-0">
-        <div className="relative overflow-hidden rounded-md bg-gray-100 aspect-video">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full h-full object-cover"
-          />
-          
-          <canvas
-            ref={displayCanvasRef}
-            className="absolute top-0 left-0 w-full h-full"
-            onClick={handleCanvasClick}
-          />
-          
-          {/* Hidden canvas for processing */}
-          <canvas
-            ref={detectionCanvasRef}
-            className="hidden"
-          />
-          
-          {!isVideoOn && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center">
-                <Camera className="h-12 w-12 mx-auto text-gray-400" />
-                <p className="mt-2 text-sm text-gray-500">Enable camera to start</p>
+    <>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg flex items-center justify-between">
+            Camera Feed
+            
+            {faceData && faceData.faces.length > 0 && (
+              <div className="text-xs flex items-center gap-1 bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
+                <span className="animate-pulse">•</span>
+                <span>Click on faces for actions</span>
               </div>
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="relative overflow-hidden rounded-md bg-gray-100 aspect-video">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+            />
+            
+            <canvas
+              ref={displayCanvasRef}
+              className="absolute top-0 left-0 w-full h-full"
+              onClick={handleCanvasClick}
+              style={{ cursor: faceData && faceData.faces.length > 0 ? 'crosshair' : 'default' }}
+            />
+            
+            {/* Hidden canvas for processing */}
+            <canvas
+              ref={detectionCanvasRef}
+              className="hidden"
+            />
+            
+            {!isVideoOn && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center">
+                  <Camera className="h-12 w-12 mx-auto text-gray-400" />
+                  <p className="mt-2 text-sm text-gray-500">Enable camera to start</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Render hint overlay for interactive faces */}
+            {faceData?.faces.map((face, idx) => {
+              if (!displayCanvasRef.current) return null;
+              
+              const canvas = displayCanvasRef.current;
+              const { x, y, width, height } = face.bounding_box;
+              
+              // Convert normalized coordinates to pixel values for the overlay
+              const rectX = x * canvas.width;
+              const rectY = y * canvas.height;
+              
+              // Calculate position for indicator (relative to canvas dimensions)
+              const indicatorPosX = rectX + (width * canvas.width * 0.5); 
+              const indicatorPosY = rectY;
+              
+              // Convert to viewport coordinates
+              const rect = canvas.getBoundingClientRect();
+              const viewportX = (indicatorPosX / canvas.width) * rect.width;
+              const viewportY = (indicatorPosY / canvas.height) * rect.height;
+              
+              const isHandRaised = face.hand_raising_status?.is_hand_raised;
+              const attentionColor = face.attentionMetrics?.focusScore > 70 
+                ? 'bg-green-500' 
+                : face.attentionMetrics?.focusScore > 40 
+                  ? 'bg-yellow-500' 
+                  : 'bg-red-500';
+              
+              return (
+                <div 
+                  key={`face-indicator-${idx}`}
+                  className="absolute pointer-events-none"
+                  style={{
+                    left: `${viewportX}px`,
+                    top: `${viewportY}px`,
+                    transform: 'translate(-50%, -100%)'
+                  }}
+                >
+                  <div className="flex flex-col items-center">
+                    <div className={`w-3 h-3 rounded-full ${attentionColor} animate-pulse mb-1`} />
+                    {isHandRaised && (
+                      <div className="text-xs bg-blue-500 text-white px-1 rounded-sm mb-1">
+                        ✋
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+      
+      {/* Position the dialog trigger at the clicked position */}
+      <div 
+        style={{ 
+          position: 'fixed',
+          left: `${dialogPosition.x}px`, 
+          top: `${dialogPosition.y}px`,
+          transform: 'translate(-50%, -50%)',
+          zIndex: 1000,
+          pointerEvents: isDialogOpen ? 'auto' : 'none', 
+          opacity: 0  // Hide the trigger button
+        }}
+      >
+        <CircularDialogWidget
+          isOpen={isDialogOpen}
+          onOpenChange={setIsDialogOpen}
+          onSelect={handleOptionSelect}
+          trigger={<div className="w-1 h-1" />}
+        />
+      </div>
+    </>
   )
 } 
