@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, User, Course, Assignment, Badge } from "@prisma/client";
 import { hash } from "bcryptjs";
 import { addDays, subDays, subHours, format } from "date-fns";
 
@@ -6,7 +6,10 @@ const prisma = new PrismaClient();
 
 async function main() {
   try {
+    console.log("Starting database seeding process...");
+    
     // Clear existing data
+    console.log("Clearing existing data...");
     await prisma.studentEngagement.deleteMany();
     await prisma.attendance.deleteMany();
     await prisma.submission.deleteMany();
@@ -26,6 +29,22 @@ async function main() {
     await prisma.advancedConfig.deleteMany();
     await prisma.deadzone.deleteMany();
     await prisma.user.deleteMany();
+    console.log("All existing data cleared");
+
+    // Create test user for login
+    const testUserPassword = await hash("password", 12);
+    const testUser = await prisma.user.create({
+      data: {
+        name: "Test User",
+        email: "test@example.com",
+        password: testUserPassword,
+        role: "PROFESSOR",
+        department: "Test Department",
+        avatar: "/avatars/test-user.png",
+        timezone: "America/New_York",
+      },
+    });
+    console.log("Created test user for login:", testUser.email);
 
     // Create admin user
     const hashedPassword = await hash("admin123", 12);
@@ -43,7 +62,7 @@ async function main() {
     console.log("Created admin user:", admin.email);
 
     // Create professor users
-    const professors = [];
+    const professors: User[] = [];
     const professorData = [
       { name: "Dr. Maria Rodriguez", email: "rodriguez@university.edu", department: "Computer Science" },
       { name: "Dr. James Wilson", email: "wilson@university.edu", department: "Mathematics" },
@@ -67,7 +86,7 @@ async function main() {
     }
 
     // Create courses
-    const courses = [];
+    const courses: Course[] = [];
     const courseData = [
       { name: "Introduction to Programming", code: "CS101", description: "Fundamentals of programming with Python", instructorId: professors[0].id },
       { name: "Data Structures & Algorithms", code: "CS201", description: "Advanced data structures and algorithm analysis", instructorId: professors[0].id },
@@ -97,7 +116,7 @@ async function main() {
     }
 
     // Create badges
-    const badges = [];
+    const badges: Badge[] = [];
     const badgeData = [
       { name: "Top Performer", description: "Awarded to students with exceptional academic performance", icon: "/badges/top-performer.png" },
       { name: "Perfect Attendance", description: "Awarded for 100% attendance record", icon: "/badges/perfect-attendance.png" },
@@ -164,7 +183,7 @@ async function main() {
     
     // Create assignments for each course
     const assignmentTypes = ["QUIZ", "ASSIGNMENT", "DISCUSSION", "EXAM", "PROJECT"];
-    const assignments = [];
+    const assignments: Assignment[] = [];
 
     for (const course of courses) {
       // Create 5-10 assignments per course
@@ -202,7 +221,7 @@ async function main() {
       const studentCourseIds = enrollments.map(e => e.courseId);
       
       const relevantAssignments = assignments.filter(a => 
-        studentCourseIds.includes(a.courseId) && a.dueDate < new Date()
+        studentCourseIds.includes(a.courseId) && new Date(a.dueDate) < new Date()
       );
       
       for (const assignment of relevantAssignments) {
@@ -210,8 +229,8 @@ async function main() {
         if (Math.random() < 0.8) {
           const isLate = Math.random() < 0.2;
           const submittedDate = isLate 
-            ? addDays(assignment.dueDate, Math.floor(Math.random() * 3) + 1)
-            : subDays(assignment.dueDate, Math.floor(Math.random() * 5) + 1);
+            ? addDays(new Date(assignment.dueDate), Math.floor(Math.random() * 3) + 1)
+            : subDays(new Date(assignment.dueDate), Math.floor(Math.random() * 5) + 1);
             
           // Different score distributions for different students
           // Some students consistently do well, others struggle
@@ -248,233 +267,176 @@ async function main() {
       for (let i = 1; i <= numLectures; i++) {
         const lectureDate = addDays(semesterStart, i * lectureGap);
         // If lecture date is in the past
-        const isPast = lectureDate < new Date();
-        
-        const lecture = await prisma.lecture.create({
-          data: {
-            title: `Lecture ${i}: ${generateLectureTitle(course.code, i)}`,
-            description: `Week ${Math.ceil(i / 2)} lecture for ${course.name}`,
-            date: lectureDate,
-            duration: 90, // 90 minutes
-            courseId: course.id,
-            isActive: !isPast && i === numLectures, // Only the most recent future lecture is active
-          }
-        });
-        
-        // Create attendance records for past lectures
-        if (isPast) {
-          const enrollments = await prisma.studentEnrollment.findMany({
-            where: { courseId: course.id },
-            select: { studentId: true },
+        if (lectureDate < today) {
+          const title = generateLectureTitle(course.code, i);
+          const date = new Date(lectureDate);
+          date.setHours(9 + Math.floor(Math.random() * 8)); // Between 9 AM and 5 PM
+          date.setMinutes(Math.random() < 0.5 ? 0 : 30);
+          
+          const duration = 60; // 1 hour lectures (in minutes)
+          
+          const lecture = await prisma.lecture.create({
+            data: {
+              courseId: course.id,
+              title,
+              description: `Lecture ${i} for ${course.name}`,
+              date,
+              duration,
+              isActive: false, // Past lectures are not active
+            }
           });
           
-          for (const enrollment of enrollments) {
-            const studentId = enrollment.studentId;
-            // Some students miss classes, others are late
-            const attendanceRoll = Math.random();
-            let status;
-            
-            // Student quality affects attendance
-            const studentQuality = studentId.charCodeAt(0) % 10; // Use student ID to get consistent quality
-            const qualityFactor = studentQuality / 10; // 0 to 0.9
-            
-            if (attendanceRoll < 0.1 - (qualityFactor * 0.05)) {
-              status = "ABSENT";
-            } else if (attendanceRoll < 0.25 - (qualityFactor * 0.15)) {
-              status = "LATE";
-            } else {
-              status = "PRESENT";
-            }
-            
-            await prisma.attendance.create({
-              data: {
-                studentId,
-                lectureId: lecture.id,
-                status: status as any,
-                joinTime: status !== "ABSENT" ? subHours(lectureDate, status === "LATE" ? 0 : 0.1) : null,
-                leaveTime: status !== "ABSENT" ? addDays(lectureDate, 0.0625) : null, // 90 minutes = 0.0625 days
-              }
+          console.log(`Created lecture ${i} for ${course.code}`);
+          
+          // Generate random attendance for this lecture
+          if (lectureDate < subDays(today, 1)) { // Only for lectures that have definitely passed
+            const courseEnrollments = await prisma.studentEnrollment.findMany({
+              where: { courseId: course.id },
+              select: { studentId: true },
             });
             
-            // Create engagement data for attending students
-            if (status !== "ABSENT") {
-              const baseEngagement = 50 + (studentQuality * 5);
-              const randomVariation = Math.floor(Math.random() * 20) - 10;
-              const engagementScore = Math.max(0, Math.min(100, baseEngagement + randomVariation));
-              
-              let engagementLevel;
-              if (engagementScore < 40) engagementLevel = "low";
-              else if (engagementScore < 75) engagementLevel = "medium";
-              else engagementLevel = "high";
-              
-              await prisma.studentEngagement.create({
-                data: {
-                  studentId,
-                  lectureId: lecture.id,
-                  attentionDuration: Math.floor((engagementScore / 100) * 90 * 60), // Seconds attentive
-                  distractionCount: Math.floor((100 - engagementScore) / 10),
-                  focusScore: engagementScore,
-                  handRaisedCount: Math.floor(Math.random() * 3),
-                  engagementLevel,
-                  detectionCount: Math.floor(Math.random() * 20) + 80, // 80-100 detections
-                  averageConfidence: 0.85 + (Math.random() * 0.15),
-                  detectionSnapshots: [],
-                }
-              });
+            for (const enrollment of courseEnrollments) {
+              // 80% chance of attending each lecture
+              if (Math.random() < 0.8) {
+                await prisma.attendance.create({
+                  data: {
+                    studentId: enrollment.studentId,
+                    lectureId: lecture.id,
+                    status: Math.random() < 0.9 ? "PRESENT" : "LATE",
+                    joinTime: date, // Use lecture date as check-in time
+                  }
+                });
+              }
             }
+            console.log(`Created attendance records for lecture ${i} of ${course.code}`);
           }
         }
-        
-        console.log(`Created lecture ${i} for ${course.code}`);
       }
     }
 
-    // Assign badges to students based on performance
-    for (const student of students) {
-      // Get student's submissions to calculate performance
-      const submissions = await prisma.submission.findMany({
-        where: { studentId: student.id, status: "GRADED" },
-      });
-      
-      const attendances = await prisma.attendance.findMany({
-        where: { studentId: student.id },
-      });
-      
-      // Calculate average score
-      if (submissions.length > 0) {
-        const scores = submissions.map(s => s.score || 0);
-        const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-        
-        // Top Performer badge for students with 90+ average
-        if (avgScore >= 90 && scores.length >= 5) {
-          await awardBadge(student.id, "Top Performer");
-        }
-        
-        // Quiz Master badge for students with 5+ perfect quiz scores
-        const perfectQuizzes = await prisma.submission.count({
-          where: {
-            studentId: student.id,
-            score: 100,
-            assignment: {
-              assignmentType: "QUIZ"
-            }
-          }
-        });
-        
-        if (perfectQuizzes >= 3) {
-          await awardBadge(student.id, "Quiz Master");
-        }
-      }
-      
-      // Perfect Attendance badge for students with all PRESENT attendances
-      if (attendances.length > 0) {
-        const allPresent = attendances.every(a => a.status === "PRESENT");
-        if (allPresent && attendances.length >= 10) {
-          await awardBadge(student.id, "Perfect Attendance");
-        }
-      }
-      
-      // Randomly award other badges (for demonstration)
-      if (Math.random() < 0.3) {
-        await awardBadge(student.id, "Problem Solver");
-      }
-      
-      if (Math.random() < 0.3) {
-        await awardBadge(student.id, "Team Player");
-      }
-      
-      if (Math.random() < 0.3) {
-        await awardBadge(student.id, "Fast Learner");
-      }
-    }
-
-    // Create some announcements for each course
-    const announcementTitles = [
-      "Important deadline reminder",
-      "Class canceled next week",
-      "Office hours change",
-      "Additional study resources",
-      "Guest lecturer announcement",
-      "Midterm exam details",
-      "Project requirements update",
-      "Grading policy clarification"
-    ];
-    
-    for (const course of courses) {
-      // 3-5 announcements per course
-      const numAnnouncements = Math.floor(Math.random() * 3) + 3;
-      
-      for (let i = 0; i < numAnnouncements; i++) {
-        const title = announcementTitles[Math.floor(Math.random() * announcementTitles.length)];
-        const isImportant = Math.random() < 0.3;
-        const publishedDate = subDays(new Date(), Math.floor(Math.random() * 30) + 1);
-        
-        await prisma.announcement.create({
-          data: {
-            title,
-            content: generateAnnouncementContent(title, course.name),
-            isImportant,
-            publishedAt: publishedDate,
-            courseId: course.id,
-          }
-        });
-        
-        console.log(`Created announcement for ${course.code}: ${title}`);
-      }
-    }
-
-    // Create default configurations for admin
-    await prisma.scoringConfig.create({
-      data: {
-        userId: admin.id,
-      }
-    });
-    
-    await prisma.thresholdConfig.create({
-      data: {
-        userId: admin.id,
-      }
-    });
-    
-    await prisma.decayConfig.create({
-      data: {
-        userId: admin.id,
-      }
-    });
-    
-    await prisma.bonusConfig.create({
-      data: {
-        userId: admin.id,
-      }
-    });
-    
-    await prisma.advancedConfig.create({
-      data: {
-        userId: admin.id,
-      }
-    });
-
-    // Count Dr. Maria's unique students
-    const drMariaCourses = await prisma.course.findMany({
-      where: { instructorId: professors[0].id },
-      select: { id: true }
-    });
-
-    const drMariaStudents = await prisma.studentEnrollment.findMany({
+    // Create student engagement data for recent lectures
+    const recentLectures = await prisma.lecture.findMany({
       where: {
-        courseId: {
-          in: drMariaCourses.map(c => c.id)
+        date: {
+          gte: subDays(today, 14), // Last two weeks
+          lte: today,
         }
       },
-      select: {
-        studentId: true
-      },
-      distinct: ['studentId']
+      include: {
+        course: true
+      }
     });
+    
+    for (const lecture of recentLectures) {
+      // For each student enrolled in this course
+      const enrolledStudents = await prisma.studentEnrollment.findMany({
+        where: { courseId: lecture.courseId },
+        select: { studentId: true }
+      });
+      
+      for (const enrollment of enrolledStudents) {
+        // Generate engagement data points for this student in this lecture
+        const attendanceRecord = await prisma.attendance.findFirst({
+          where: {
+            studentId: enrollment.studentId,
+            lectureId: lecture.id
+          }
+        });
+        
+        // Only generate engagement for students who attended
+        if (attendanceRecord) {
+          const lectureDate = new Date(lecture.date);
+          const totalMinutes = lecture.duration || 60;
+          
+          // Calculate average engagement over the lecture instead of creating multiple entries
+          let totalEngagementScore = 0;
+          let dataPoints = 0;
+          
+          // Generate data points for calculation only (not for DB insertion)
+          for (let minute = 0; minute < totalMinutes; minute += 5) {
+            const baseEngagement = 0.7 + (Math.random() * 0.3);
+            const timeFactor = 1 - (minute / totalMinutes * 0.5); // Gradually decrease
+            let pointScore = Math.floor((baseEngagement * timeFactor) * 100);
+            
+            // Occasional dips in engagement
+            if (Math.random() < 0.2) {
+              pointScore = Math.floor(pointScore * 0.6);
+            }
+            
+            totalEngagementScore += pointScore;
+            dataPoints++;
+          }
+          
+          // Calculate average
+          const avgEngagementScore = Math.floor(totalEngagementScore / (dataPoints || 1));
+          
+          // Create a single engagement record with the average score
+          await prisma.studentEngagement.create({
+            data: {
+              studentId: enrollment.studentId,
+              lectureId: lecture.id,
+              timestamp: lectureDate,
+              engagementLevel: getEngagementLevel(avgEngagementScore),
+              detectionCount: Math.floor(Math.random() * 10) + 1,
+              focusScore: avgEngagementScore,
+              attentionDuration: Math.floor(Math.random() * 300),
+              distractionCount: Math.floor(Math.random() * 5),
+              handRaisedCount: Math.floor(Math.random() * 2),
+              averageConfidence: 0.7 + (Math.random() * 0.3),
+              detectionSnapshots: [],
+            }
+          });
+          
+          console.log(`Created engagement data for student ${enrollment.studentId} in lecture ${lecture.id}`);
+        }
+      }
+    }
 
-    console.log(`\nDr. Maria Rodriguez has ${drMariaStudents.length} unique students across her courses (CS101, CS201, CS301)`);
-
-    console.log("\nDatabase seeding completed!");
+    // Award badges to some students
+    const topPerformers = await prisma.submission.groupBy({
+      by: ['studentId'],
+      _avg: {
+        score: true,
+      },
+      having: {
+        score: {
+          _avg: {
+            gt: 90
+          }
+        }
+      }
+    });
+    
+    for (const student of topPerformers) {
+      await awardBadge(student.studentId, "Top Performer");
+    }
+    
+    // Award perfect attendance badges
+    const students2 = await prisma.student.findMany({
+      include: {
+        enrollments: true,
+        attendances: true
+      }
+    });
+    
+    for (const student of students2) {
+      let totalLectures = 0;
+      
+      // Calculate total lectures for courses this student is enrolled in
+      for (const enrollment of student.enrollments) {
+        const courseLectures = await prisma.lecture.count({
+          where: { courseId: enrollment.courseId }
+        });
+        totalLectures += courseLectures;
+      }
+      
+      // If they attended all lectures, award badge
+      if (student.attendances.length >= totalLectures && totalLectures > 0) {
+        await awardBadge(student.id, "Perfect Attendance");
+      }
+    }
+    
+    console.log("Database seeding completed successfully!");
   } catch (error) {
     console.error("Error seeding database:", error);
     throw error;
@@ -483,7 +445,12 @@ async function main() {
   }
 }
 
-// Helper functions
+function getEngagementLevel(score: number): string {
+  if (score >= 80) return "high";
+  if (score >= 40) return "medium";
+  return "low";
+}
+
 async function awardBadge(studentId: string, badgeName: string) {
   const badge = await prisma.badge.findFirst({
     where: { name: badgeName }
@@ -494,6 +461,7 @@ async function awardBadge(studentId: string, badgeName: string) {
       data: {
         studentId,
         badgeId: badge.id,
+        awardedAt: new Date(),
       }
     });
     console.log(`Awarded ${badgeName} badge to student ${studentId}`);
@@ -502,144 +470,141 @@ async function awardBadge(studentId: string, badgeName: string) {
 
 function generateFeedback(score: number): string {
   if (score >= 90) {
-    return "Excellent work! You've demonstrated a thorough understanding of the material.";
+    return "Excellent work! Your understanding of the material is outstanding.";
   } else if (score >= 80) {
-    return "Good job! You've shown a solid grasp of the concepts with a few minor errors.";
+    return "Good job! You've demonstrated a solid grasp of the concepts.";
   } else if (score >= 70) {
-    return "Satisfactory work with good effort, but there's room for improvement in understanding key concepts.";
+    return "Satisfactory work with a few areas that could be improved.";
   } else if (score >= 60) {
-    return "You've met the minimum requirements, but should review the material more carefully.";
+    return "You've shown basic understanding but need to work on several concepts.";
   } else {
-    return "This submission needs significant improvement. Please review the course materials and consider visiting office hours.";
+    return "Please review the material and consider attending office hours for additional help.";
   }
 }
 
 function generateLectureTitle(courseCode: string, lectureNumber: number): string {
-  const cs101Titles = [
-    "Introduction to Programming Concepts",
-    "Variables and Data Types",
-    "Control Structures",
-    "Functions and Modules",
-    "Lists and Dictionaries",
-    "File I/O",
-    "Exception Handling",
-    "Object-Oriented Programming Basics",
-    "Classes and Objects",
-    "Inheritance and Polymorphism",
-    "Recursion",
-    "Algorithms Introduction",
-    "Debugging Techniques",
-    "GUI Programming",
-    "Final Project Overview"
+  const titles: Record<string, string[]> = {
+    "CS101": [
+      "Introduction to Programming Concepts",
+      "Variables and Data Types",
+      "Conditional Statements",
+      "Loops and Iteration",
+      "Functions and Modularity",
+      "Lists and Arrays",
+      "Dictionaries and Hash Tables",
+      "File I/O Operations",
+      "Exception Handling",
+      "Object-Oriented Programming Basics",
+      "Classes and Objects",
+      "Inheritance and Polymorphism",
+      "Debugging Techniques",
+      "Algorithm Efficiency",
+      "Basic Data Structures",
+      "Final Project Workshop",
+    ],
+    "CS201": [
+      "Algorithm Analysis and Big O Notation",
+      "Arrays and Linked Lists",
+      "Stacks and Queues",
+      "Trees and Binary Search Trees",
+      "Heaps and Priority Queues",
+      "Hash Tables and Hash Functions",
+      "Graphs and Graph Representations",
+      "Graph Traversal Algorithms",
+      "Sorting Algorithms",
+      "Searching Algorithms",
+      "Dynamic Programming",
+      "Greedy Algorithms",
+      "Divide and Conquer Strategies",
+      "Advanced Data Structures",
+      "Algorithm Design Techniques",
+      "Case Studies in Algorithm Implementation",
+    ],
+    "CS301": [
+      "Introduction to Database Systems",
+      "Relational Data Model",
+      "SQL Fundamentals",
+      "Database Design and ER Diagrams",
+      "Normalization Techniques",
+      "Database Indexing",
+      "Query Optimization",
+      "Transaction Management",
+      "Concurrency Control",
+      "Database Recovery",
+      "NoSQL Databases",
+      "Distributed Databases",
+      "Data Warehousing Concepts",
+      "Database Security",
+      "Advanced SQL Techniques",
+      "Modern Database Technologies",
+    ],
+    "MATH201": [
+      "Vector Spaces and Subspaces",
+      "Linear Transformations",
+      "Matrix Operations",
+      "Matrix Inverses",
+      "Determinants",
+      "Eigenvalues and Eigenvectors",
+      "Diagonalization",
+      "Inner Product Spaces",
+      "Orthogonality and Least Squares",
+      "Symmetric Matrices and Quadratic Forms",
+      "Singular Value Decomposition",
+      "Jordan Canonical Form",
+      "Applications in Computer Graphics",
+      "Applications in Machine Learning",
+      "Linear Algebra in Cryptography",
+      "Advanced Matrix Decompositions",
+    ],
+    "CS401": [
+      "Introduction to Machine Learning",
+      "Supervised vs. Unsupervised Learning",
+      "Linear Regression",
+      "Logistic Regression",
+      "Decision Trees",
+      "Support Vector Machines",
+      "Neural Networks Fundamentals",
+      "Deep Learning Architectures",
+      "Convolutional Neural Networks",
+      "Recurrent Neural Networks",
+      "Clustering Algorithms",
+      "Dimensionality Reduction",
+      "Feature Engineering",
+      "Model Evaluation and Validation",
+      "Ensemble Methods",
+      "Ethics in Machine Learning",
+    ]
+  };
+  
+  // Default titles for courses not in the predefined list
+  const defaultTitles = [
+    "Course Introduction",
+    "Fundamental Concepts",
+    "Core Principles",
+    "Advanced Techniques",
+    "Practical Applications",
+    "Case Studies",
+    "Current Research Topics",
+    "Industry Practices",
+    "Theoretical Foundations",
+    "Problem-Solving Approaches",
+    "Special Topics",
+    "Student Presentations",
+    "Guest Lecture",
+    "Review Session",
+    "Final Project Discussions",
+    "Course Summary",
   ];
   
-  const cs201Titles = [
-    "Review of Programming Fundamentals",
-    "Algorithm Analysis and Big O Notation",
-    "Arrays and Linked Lists",
-    "Stacks and Queues",
-    "Trees and Binary Search Trees",
-    "Heaps and Priority Queues",
-    "Graphs and Graph Algorithms",
-    "Hash Tables",
-    "Sorting Algorithms",
-    "Searching Algorithms",
-    "Dynamic Programming",
-    "Greedy Algorithms",
-    "Divide and Conquer Strategies",
-    "Advanced Data Structures",
-    "Algorithm Design Patterns"
-  ];
+  const titleList = titles[courseCode] || defaultTitles;
+  const index = (lectureNumber - 1) % titleList.length;
   
-  const cs301Titles = [
-    "Database Concepts and Architecture",
-    "Entity-Relationship Model",
-    "Relational Data Model",
-    "SQL Fundamentals",
-    "Advanced SQL Queries",
-    "Normalization",
-    "Database Design",
-    "Indexing and Query Optimization",
-    "Transaction Processing",
-    "Concurrency Control",
-    "Database Security",
-    "NoSQL Databases",
-    "Data Warehousing",
-    "Big Data Processing",
-    "Database Administration"
-  ];
-  
-  const math201Titles = [
-    "Vector Spaces",
-    "Linear Transformations",
-    "Matrix Operations",
-    "Systems of Linear Equations",
-    "Determinants",
-    "Eigenvalues and Eigenvectors",
-    "Diagonalization",
-    "Inner Product Spaces",
-    "Orthogonality",
-    "Least Squares Approximation",
-    "Singular Value Decomposition",
-    "Applications in Computer Graphics",
-    "Linear Programming",
-    "Markov Chains",
-    "Applications in Machine Learning"
-  ];
-  
-  const cs401Titles = [
-    "Introduction to Machine Learning",
-    "Supervised Learning",
-    "Linear Regression",
-    "Logistic Regression",
-    "Decision Trees",
-    "Neural Networks",
-    "Support Vector Machines",
-    "Unsupervised Learning",
-    "Clustering Algorithms",
-    "Dimensionality Reduction",
-    "Ensemble Methods",
-    "Reinforcement Learning",
-    "Deep Learning",
-    "Natural Language Processing",
-    "Ethics in AI and Machine Learning"
-  ];
-  
-  let titles;
-  switch (courseCode) {
-    case "CS101": titles = cs101Titles; break;
-    case "CS201": titles = cs201Titles; break;
-    case "CS301": titles = cs301Titles; break;
-    case "MATH201": titles = math201Titles; break;
-    case "CS401": titles = cs401Titles; break;
-    default: titles = ["Lecture " + lectureNumber];
-  }
-  
-  // Get title based on lecture number, or use a default if out of range
-  return titles[lectureNumber - 1] || `Advanced Topics ${lectureNumber}`;
+  return titleList[index];
 }
 
-function generateAnnouncementContent(title: string, courseName: string): string {
-  switch (title) {
-    case "Important deadline reminder":
-      return `Remember that the next assignment for ${courseName} is due this Friday at 11:59 PM. Late submissions will be penalized according to the course policy.`;
-    case "Class canceled next week":
-      return `Due to a scheduling conflict, the ${courseName} class scheduled for next Tuesday will be canceled. We will post additional materials to cover the content.`;
-    case "Office hours change":
-      return `Office hours for ${courseName} will be moved to Thursdays 2-4 PM starting next week. Please adjust your schedules accordingly.`;
-    case "Additional study resources":
-      return `We've added supplementary materials for ${courseName} in the course resources section. These include practice problems and additional readings.`;
-    case "Guest lecturer announcement":
-      return `We're excited to announce that Dr. Jane Smith from Industry Labs will be giving a guest lecture next week in ${courseName}. Attendance is highly recommended.`;
-    case "Midterm exam details":
-      return `The midterm exam for ${courseName} will be held on March 15th. It will cover all material from lectures 1-7. A study guide has been posted.`;
-    case "Project requirements update":
-      return `We've updated the requirements for the final project in ${courseName}. Please review the changes in the project description document.`;
-    case "Grading policy clarification":
-      return `This is a clarification on the grading policy for ${courseName}. Participation accounts for 15% of your final grade, and will be assessed based on both in-class and online contributions.`;
-    default:
-      return `Important announcement for ${courseName}. Please read carefully and contact the instructor if you have any questions.`;
-  }
-}
-
-main(); 
+// Call the main function
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  }); 
