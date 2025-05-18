@@ -5,14 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-
-// Sample activity log item type
-type ActivityLogItem = {
-  id: string;
-  message: string;
-  timestamp: Date;
-  type?: 'info' | 'warning' | 'error' | 'success';
-};
+import { ActivityEvent } from '@/hooks/lecture-room/useLectureEvents';
 
 interface SlidesPopupProps {
   isOpen: boolean;
@@ -21,6 +14,7 @@ interface SlidesPopupProps {
   presentationId?: string;
   lectureId?: string;
   embedUrl?: string;
+  activityEvents?: ActivityEvent[];
 }
 
 export default function SlidesPopup({ 
@@ -29,9 +23,9 @@ export default function SlidesPopup({
   className,
   presentationId,
   lectureId,
-  embedUrl
+  embedUrl,
+  activityEvents = []
 }: SlidesPopupProps) {
-  const [activityLog, setActivityLog] = useState<ActivityLogItem[]>([]);
   const [isFullScreen, setIsFullScreen] = useState(false);
 
   // Toggle fullscreen function
@@ -52,36 +46,6 @@ export default function SlidesPopup({
       }
     }
   };
-
-  // Example useEffect for demonstration - could fetch or subscribe to real-time events
-  useEffect(() => {
-    if (isOpen) {
-      // Demo data, in a real app would be replaced with actual data source
-      const demoActivities: ActivityLogItem[] = [
-        { id: '1', message: 'Session started', timestamp: new Date(), type: 'info' },
-        { id: '2', message: 'Slide 1 loaded', timestamp: new Date(), type: 'success' },
-      ];
-      
-      setActivityLog(demoActivities);
-      
-      // Simulate receiving new activities
-      const interval = setInterval(() => {
-        const types: ActivityLogItem['type'][] = ['info', 'warning', 'error', 'success'];
-        const randomType = types[Math.floor(Math.random() * types.length)];
-        
-        const newActivity = {
-          id: Math.random().toString(36).substring(2, 9),
-          message: `Activity ${new Date().toLocaleTimeString()}`,
-          timestamp: new Date(),
-          type: randomType
-        };
-        
-        setActivityLog(prev => [...prev, newActivity]);
-      }, 5000);
-      
-      return () => clearInterval(interval);
-    }
-  }, [isOpen]);
 
   // Listen for fullscreen changes initiated by browser (e.g., Escape key)
   useEffect(() => {
@@ -158,10 +122,10 @@ export default function SlidesPopup({
             
             <ScrollArea className="flex-1">
               <div className="p-3 space-y-3">
-                {activityLog.length === 0 ? (
+                {activityEvents.length === 0 ? (
                   <p className="text-muted-foreground text-center p-4">No activity yet</p>
                 ) : (
-                  activityLog.map((activity) => (
+                  activityEvents.map((activity) => (
                     <ActivityLogEntry key={activity.id} activity={activity} />
                   ))
                 )}
@@ -174,12 +138,13 @@ export default function SlidesPopup({
   );
 }
 
-function ActivityLogEntry({ activity }: { activity: ActivityLogItem }) {
+function ActivityLogEntry({ activity }: { activity: ActivityEvent }) {
   const typeStyles = {
-    info: "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950 dark:border-blue-900 dark:text-blue-300",
-    warning: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-950 dark:border-yellow-900 dark:text-yellow-300",
-    error: "bg-red-50 border-red-200 text-red-800 dark:bg-red-950 dark:border-red-900 dark:text-red-300",
-    success: "bg-green-50 border-green-200 text-green-800 dark:bg-green-950 dark:border-green-900 dark:text-green-300"
+    attention: "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950 dark:border-blue-900 dark:text-blue-300",
+    "hand-raising": "bg-green-50 border-green-200 text-green-800 dark:bg-green-950 dark:border-green-900 dark:text-green-300",
+    system: "bg-purple-50 border-purple-200 text-purple-800 dark:bg-purple-950 dark:border-purple-900 dark:text-purple-300",
+    info: "bg-gray-50 border-gray-200 text-gray-800 dark:bg-gray-950 dark:border-gray-900 dark:text-gray-300",
+    warning: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-950 dark:border-yellow-900 dark:text-yellow-300"
   };
 
   return (

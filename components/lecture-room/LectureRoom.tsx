@@ -7,12 +7,14 @@ import { useFaceDetection } from "@/hooks/lecture-room/useFaceDetection"
 import { useLectureManagement } from "@/hooks/lecture-room/useLectureManagement"
 import { usePresentationManager } from "@/hooks/lecture-room/usePresentationManager"
 import { useChatManager } from "@/hooks/lecture-room/useChatManager"
+import { useLectureEvents } from "@/hooks/lecture-room/useLectureEvents"
 import { ControlPanel } from "./ControlPanel"
 import { VideoFeed } from "./VideoFeed"
 import { DetectionAnalysis } from "./DetectionAnalysis"
 import { PresentationPanel } from "./PresentationPanel"
 import { ChatPanel } from "./ChatPanel"
 import { DeleteLectureDialog } from "./DeleteLectureDialog"
+import { useEffect } from "react"
 
 export function LectureRoom({ course, students }: LectureRoomProps) {
   // Use camera stream hook
@@ -70,6 +72,49 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
   const chat = useChatManager({
     course
   })
+  
+  // Use lecture events hook
+  const events = useLectureEvents({
+    lectureId: lecture.lectureId,
+    students
+  })
+  
+  // Process face detection results to generate events
+  useEffect(() => {
+    if (detection.faceData && detection.faceData.faces) {
+      events.processFaceDetectionUpdate(detection.faceData.faces)
+    }
+  }, [detection.faceData, events])
+  
+  // Send events to the backend to be shared with presentation viewers
+  useEffect(() => {
+    async function sendEventsToBackend() {
+      if (!lecture.lectureId || events.events.length === 0) return
+      
+      try {
+        // Take only the 10 most recent events that haven't been sent yet
+        const recentEvents = events.events.slice(0, 10)
+        
+        // Send events one by one to the backend
+        for (const event of recentEvents) {
+          await fetch(`/api/lectures/${lecture.lectureId}/events`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ event })
+          })
+        }
+      } catch (error) {
+        console.error('Error sending events to backend:', error)
+      }
+    }
+    
+    // Set up an interval to send events periodically
+    const interval = setInterval(sendEventsToBackend, 2000)
+    
+    return () => clearInterval(interval)
+  }, [lecture.lectureId, events.events])
   
   return (
     <div className="flex flex-col h-full">
@@ -138,6 +183,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
           presentationData={presentation.presentationData}
           activeSlideIndex={presentation.activeSlideIndex}
           lectureId={lecture.lectureId}
+          activityEvents={events.events}
           handlePresentationUrl={presentation.handlePresentationUrl}
           handleSlideUpload={presentation.handleSlideUpload}
           changeSlide={presentation.changeSlide}

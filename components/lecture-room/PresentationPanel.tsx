@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Presentation, MonitorIcon } from "lucide-react"
 import { PresentationData } from "@/types/lecture-room"
+import { ActivityEvent } from "@/hooks/lecture-room/useLectureEvents"
 
 interface PresentationPanelProps {
   presentationUrl: string
@@ -14,6 +15,7 @@ interface PresentationPanelProps {
   presentationData: PresentationData | null
   activeSlideIndex: number
   lectureId: string | null
+  activityEvents?: ActivityEvent[]
   handlePresentationUrl: (e: React.ChangeEvent<HTMLInputElement>) => void
   handleSlideUpload: (event: React.ChangeEvent<HTMLInputElement>) => void
   changeSlide: (index: number) => void
@@ -29,11 +31,18 @@ export function PresentationPanel({
   presentationData,
   activeSlideIndex,
   lectureId,
+  activityEvents = [],
   handlePresentationUrl,
   handleSlideUpload,
   changeSlide,
   openPresentationDisplay
 }: PresentationPanelProps) {
+  
+  // Function to open the presentation display with activity events
+  const handleOpenPresentation = () => {
+    openPresentationDisplay(lectureId);
+  };
+  
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -162,13 +171,28 @@ export function PresentationPanel({
           
           {/* Add this button after your existing presentation controls */}
           <Button 
-            onClick={() => openPresentationDisplay(lectureId)}
+            onClick={handleOpenPresentation}
             variant="outline"
             className="flex items-center gap-2 mt-4"
           >
             <MonitorIcon className="h-4 w-4" />
             Open on Second Screen
           </Button>
+          
+          {/* Activity events summary */}
+          {activityEvents.length > 0 && (
+            <div className="mt-4 p-3 bg-muted/30 rounded-md">
+              <h3 className="text-sm font-medium mb-2">Recent Activity ({activityEvents.length})</h3>
+              <ul className="text-xs space-y-1 max-h-[100px] overflow-y-auto">
+                {activityEvents.slice(0, 5).map(event => (
+                  <li key={event.id} className="flex justify-between">
+                    <span>{event.message}</span>
+                    <span className="text-muted-foreground">{new Date(event.timestamp).toLocaleTimeString()}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
