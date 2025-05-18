@@ -43,8 +43,7 @@ async function getCourses() {
   };
 
   courses.forEach(course => {
-    const id = course.id.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    courseMap[id] = {
+    courseMap[course.id] = {
       id: course.id,
       name: course.name,
       description: `${course.code} - ${course.name}`,
@@ -61,7 +60,7 @@ async function getStudentsByCourse(courseId: string) {
 
   if (courseId === "all") return students;
 
-  const course = courses.find(c => c.id.toLowerCase().replace(/[^a-z0-9]+/g, '-') === courseId);
+  const course = courses.find(c => c.id === courseId);
   if (!course) return [];
 
   return students.filter(student => student.course === course.name);

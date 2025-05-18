@@ -16,7 +16,7 @@ import {
 } from "@/components/dashboard/ClientComponents";
 
 // Import data fetching functions
-import { getTotalStats, getCourseStats, getCanvasIntegrationStatus } from "./hooks/useDashboardData";
+import { getTotalStats, getCourseStats, getCanvasIntegrationStatus } from "../../hooks/dashboard/useDashboardData";
 
 export const metadata: Metadata = {
   title: "Professor Dashboard",

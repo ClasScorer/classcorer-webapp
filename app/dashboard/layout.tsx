@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/sidebar"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
-import { type Course, loadCourses } from "@/lib/data"
+import { type Course, fetchCourses, fetchCourseById } from "@/lib/data"
 import { useSession } from "next-auth/react"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -64,9 +64,8 @@ export default function DashboardLayout({
           const match = pathname.match(/\/courses\/([^\/]+)/)
           if (match) {
             const courseId = match[1]
-            const courses = await loadCourses()
-            const course = courses.find(c => c.id === courseId)
-            setCurrentCourse(course || null)
+            const course = await fetchCourseById(courseId)
+            setCurrentCourse(course)
           } else {
             setCurrentCourse(null)
           }

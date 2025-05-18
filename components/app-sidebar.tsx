@@ -185,10 +185,17 @@ export function AppSidebar() {
         })
 
         setNavData({
-          user,
+          user: {
+            id: user.id || '',
+            name: user.name || '',
+            email: user.email || '',
+            avatar: null,
+            role: user.role || 'PROFESSOR',
+            department: null,
+          },
           teams: [
             {
-              name: user.department || "Department",
+              name: "Department",
               logo: School,
               plan: "Department",
             },

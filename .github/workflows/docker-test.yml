@@ -1,4 +1,4 @@
-name: Docker Test
+name: Docker Build Test
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  test-docker:
+  test-docker-builds:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -16,13 +16,22 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image
-        run: docker build -t classcorer-webapp .
+      - name: Build development Docker image
+        run: docker build -t classcorer-webapp:dev .
 
-      - name: Run Docker container
+      - name: Build production Docker image
+        run: docker build -t classcorer-webapp:prod -f Dockerfile.prod .
+
+      - name: Test Docker Compose
         run: |
-          docker run -d --name test-container -p 3000:3000 classcorer-webapp
+          cp .env.example .env
+          docker-compose up -d
           sleep 10
           curl -f http://localhost:3000 || exit 1
-          docker stop test-container
-          docker rm test-container 
+          docker-compose down -v
+
+      - name: Test Production Docker Compose (basic build only)
+        run: |
+          export NEXTAUTH_SECRET=testsecret
+          export POSTGRES_PASSWORD=testpassword
+          docker-compose -f docker-compose.prod.yml build 
