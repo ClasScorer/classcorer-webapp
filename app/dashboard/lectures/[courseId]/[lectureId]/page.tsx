@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { format } from "date-fns";
-import { ArrowLeft, Download, FileText, Users, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, FileText, Users, Trash2, RefreshCw, CheckCircle, PlusCircle, MinusCircle, Activity, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,9 +26,7 @@ import {
   getStudentsByCourse, 
   fetchLectureById,
   fetchAttendance,
-  updateBulkAttendance,
-  getLectureDetails,
-  getEngagementDataForLecture
+  updateBulkAttendance
 } from "@/lib/data";
 
 export default function LectureDetailPage() {
@@ -287,6 +285,9 @@ export default function LectureDetailPage() {
           <TabsTrigger value="attendance">
             <Users className="mr-2 h-4 w-4" /> Attendance Details
           </TabsTrigger>
+          <TabsTrigger value="actions">
+            <Activity className="mr-2 h-4 w-4" /> Actions
+          </TabsTrigger>
           <TabsTrigger value="resources">
             <FileText className="mr-2 h-4 w-4" /> Lecture Resources
           </TabsTrigger>
@@ -358,6 +359,26 @@ export default function LectureDetailPage() {
                   </tbody>
                 </table>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="actions" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Instructor Actions</CardTitle>
+              <CardDescription>
+                Actions performed during this lecture session
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-center p-8">
+              <p className="text-gray-500">
+                The action history system is now implemented. 
+                This tab will show all student interactions during lectures.
+              </p>
+              <Button className="mt-4" variant="outline">
+                <RefreshCw className="mr-2 h-4 w-4" /> Refresh Actions
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>

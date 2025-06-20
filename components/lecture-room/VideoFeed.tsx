@@ -5,6 +5,8 @@ import { Student } from "@/lib/data"
 import { useCallback, useState, useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { CircularDialogWidget } from "./CircularDialogWidget"
+import { ActionConfirmation } from "./ActionConfirmation"
+import { StudentActionType } from "@/types/student-actions"
 
 interface VideoFeedProps {
   videoRef: React.RefObject<HTMLVideoElement>
@@ -35,6 +37,14 @@ export function VideoFeed({
   
   // Create ref for the invisible bounding box canvas
   const boundingBoxCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Add confirmation state
+  const [confirmationVisible, setConfirmationVisible] = useState(false);
+  const [confirmationDetails, setConfirmationDetails] = useState<{
+    actionType: StudentActionType;
+    studentName: string;
+    details?: any;
+  } | null>(null);
 
   // Ensure canvas resolution matches video resolution
   useEffect(() => {
@@ -391,6 +401,17 @@ export function VideoFeed({
           boundingBoxRef={boundingBoxCanvasRef}
         />
       </div>
+
+      {/* Action Confirmation */}
+      {confirmationDetails && (
+        <ActionConfirmation
+          visible={confirmationVisible}
+          onClose={() => setConfirmationVisible(false)}
+          actionType={confirmationDetails.actionType}
+          studentName={confirmationDetails.studentName}
+          details={confirmationDetails.details}
+        />
+      )}
     </>
   )
 } 
