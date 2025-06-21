@@ -1,6 +1,6 @@
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-1.1.x"]
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
@@ -9,20 +9,21 @@ datasource db {
 }
 
 model User {
-  id           String        @id @default(cuid())
-  name         String
-  email        String        @unique
-  password     String
-  role         UserRole      @default(PROFESSOR)
-  department   String?
-  avatar       String?
-  timezone     String?
-  language     String?       @default("English")
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  canvasConfig CanvasConfig?
-  courses      Course[]
-  students     Student[]
+  id             String          @id @default(cuid())
+  name           String
+  email          String          @unique
+  password       String
+  role           UserRole        @default(PROFESSOR)
+  department     String?
+  avatar         String?
+  timezone       String?
+  language       String?         @default("English")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  canvasConfig   CanvasConfig?
+  courses        Course[]
+  students       Student[]
+  actions        StudentAction[] @relation("StudentActions")
 }
 
 model Course {
@@ -45,20 +46,22 @@ model Course {
 }
 
 model Student {
-  id              String              @id @default(cuid())
+  id              String                  @id @default(cuid())
   name            String
-  email           String              @unique
+  email           String                  @unique
   avatar          String?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
   professorId     String?
   canvasStudentId String?
   attendances     Attendance[]
   engagements     StudentEngagement[]
-  professor       User?               @relation(fields: [professorId], references: [id])
+  professor       User?                   @relation(fields: [professorId], references: [id])
   badges          StudentBadge[]
   enrollments     StudentEnrollment[]
   submissions     Submission[]
+  actions         StudentAction[]
+  mappings        PersonStudentMapping[]
 }
 
 model StudentEnrollment {
@@ -108,18 +111,20 @@ model Submission {
 }
 
 model Lecture {
-  id          String       @id @default(cuid())
+  id          String                   @id @default(cuid())
   title       String
   description String?
   date        DateTime
   duration    Int?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
   courseId    String
-  isActive    Boolean      @default(false)
+  isActive    Boolean                  @default(false)
   attendances Attendance[]
   engagements StudentEngagement[]
-  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  course      Course                   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  actions     StudentAction[]
+  mappings    PersonStudentMapping[]
 }
 
 model Attendance {
@@ -279,6 +284,46 @@ model StudentEngagement {
   @@unique([studentId, lectureId])
 }
 
+model StudentAction {
+  id           String           @id @default(cuid())
+  type         StudentActionType
+  studentId    String
+  lectureId    String
+  instructorId String
+  points       Int?
+  reason       String?
+  details      Json?
+  timestamp    DateTime         @default(now())
+  status       ActionStatus     @default(COMPLETED)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  student      Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  lecture      Lecture          @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  instructor   User             @relation("StudentActions", fields: [instructorId], references: [id], onDelete: Cascade)
+
+  @@index([lectureId])
+  @@index([studentId])
+  @@index([instructorId])
+}
+
+model PersonStudentMapping {
+  id        String   @id @default(cuid())
+  personId  String   // AI-generated person ID from face detection
+  studentId String
+  lectureId String
+  confidence Float
+  frameData String?  // Optional base64 frame data for verification
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  lecture   Lecture  @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+
+  @@unique([personId, lectureId])
+  @@index([studentId])
+  @@index([lectureId])
+}
+
 enum UserRole {
   PROFESSOR
   TEACHING_ASSISTANT
@@ -306,4 +351,18 @@ enum AttendanceStatus {
   ABSENT
   LATE
   EXCUSED
+}
+
+enum StudentActionType {
+  IDENTIFY
+  SCORE_AWARD
+  SCORE_DEDUCT
+  ATTENDANCE_OVERRIDE
+  MANUAL_NOTE
+}
+
+enum ActionStatus {
+  PENDING
+  COMPLETED
+  FAILED
 }

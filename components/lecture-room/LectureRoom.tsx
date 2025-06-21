@@ -84,7 +84,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     if (detection.faceData && detection.faceData.faces) {
       events.processFaceDetectionUpdate(detection.faceData.faces)
     }
-  }, [detection.faceData, events])
+  }, [detection.faceData, events.processFaceDetectionUpdate])
   
   // Send events to the backend to be shared with presentation viewers
   useEffect(() => {

@@ -44,3 +44,7 @@ next-env.d.ts
 venv/
 uploads/
 __pycache__/
+
+# AI tools
+.cursorrules
+AGENTS.md
