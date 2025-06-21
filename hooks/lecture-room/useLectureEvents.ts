@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Student } from "@/lib/data";
 import { FaceData } from "@/types/lecture-room";
 
@@ -31,10 +31,16 @@ export function useLectureEvents({
   const [previousStatuses, setPreviousStatuses] = useState<
     Map<string, { attention: string; handRaised: boolean }>
   >(new Map());
+  
+  // Add ref to track if component is mounted
+  const isMountedRef = useRef(true);
 
   // Function to add a new event
   const addEvent = useCallback(
     (event: Omit<ActivityEvent, "id" | "timestamp">) => {
+      // Only add event if component is still mounted
+      if (!isMountedRef.current) return;
+      
       const newEvent = {
         ...event,
         id: Math.random().toString(36).substring(2, 9),
@@ -52,11 +58,12 @@ export function useLectureEvents({
 
   // Function to clear all events
   const clearEvents = useCallback(() => {
+    if (!isMountedRef.current) return;
     setEvents([]);
     setPreviousStatuses(new Map());
   }, []);
 
-  // Add a system message when lecture starts or ends
+  // Add a system message when lecture starts
   useEffect(() => {
     if (lectureId) {
       addEvent({
@@ -64,99 +71,104 @@ export function useLectureEvents({
         type: "system",
       });
     }
-    return () => {
-      if (lectureId) {
-        // Clean up if component unmounts during active lecture
-        addEvent({
-          message: "Lecture ended",
-          type: "system",
-        });
-      }
-    };
   }, [lectureId, addEvent]);
+  
+  // Cleanup effect to mark component as unmounted
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Process face detection updates and generate events
   const processFaceDetectionUpdate = useCallback(
     (faceData: FaceData[]) => {
-      if (!lectureId) return;
+      if (!lectureId || !isMountedRef.current) return;
 
-      // Create a new Map to track current statuses
-      const currentStatuses = new Map<
-        string,
-        { attention: string; handRaised: boolean }
-      >();
-
-      // Process each detected face
-      faceData.forEach((face) => {
-        const personId = face.person_id;
-        const attention = face.attention_status.toLowerCase();
-        const handRaised = face.hand_raising_status.is_hand_raised;
+      // Use requestAnimationFrame to ensure state updates happen outside of render cycle
+      requestAnimationFrame(() => {
+        if (!isMountedRef.current) return;
         
-        // Find the student name if available
-        const student = students.find((s) => s.id.toString() === personId);
-        const studentName = student?.name || "Unknown student";
+        // Create a new Map to track current statuses
+        const currentStatuses = new Map<
+          string,
+          { attention: string; handRaised: boolean }
+        >();
 
-        // Store current status
-        currentStatuses.set(personId, {
-          attention,
-          handRaised,
-        });
+        // Process each detected face
+        faceData.forEach((face) => {
+          const personId = face.person_id;
+          const attention = face.attention_status.toLowerCase();
+          const handRaised = face.hand_raising_status.is_hand_raised;
+          
+          // Find the student name if available
+          const student = students.find((s) => s.id.toString() === personId);
+          const studentName = student?.name || "Unknown student";
 
-        // Get previous status
-        const prevStatus = previousStatuses.get(personId);
-
-        // If this is a new face without previous status
-        if (!prevStatus) {
-          addEvent({
-            message: `${studentName} has joined the class`,
-            type: "info",
-            studentId: personId,
-            studentName,
+          // Store current status
+          currentStatuses.set(personId, {
+            attention,
+            handRaised,
           });
-          return;
-        }
 
-        // Check for attention status change
-        if (prevStatus.attention !== attention) {
-          if (attention === "focused") {
-            addEvent({
-              message: `${studentName} is now focused`,
-              type: "attention",
-              studentId: personId,
-              studentName,
-            });
-          } else {
-            addEvent({
-              message: `${studentName} is now unfocused`,
-              type: "warning",
-              studentId: personId,
-              studentName,
-            });
-          }
-        }
+          // Get previous status
+          const prevStatus = previousStatuses.get(personId);
 
-        // Check for hand raising status change
-        if (prevStatus.handRaised !== handRaised) {
-          if (handRaised) {
+          // If this is a new face without previous status
+          if (!prevStatus) {
             addEvent({
-              message: `${studentName} has raised their hand`,
-              type: "hand-raising",
-              studentId: personId,
-              studentName,
-            });
-          } else {
-            addEvent({
-              message: `${studentName} has lowered their hand`,
+              message: `${studentName} has joined the class`,
               type: "info",
               studentId: personId,
               studentName,
             });
+            return;
           }
+
+          // Check for attention status change
+          if (prevStatus.attention !== attention) {
+            if (attention === "focused") {
+              addEvent({
+                message: `${studentName} is now focused`,
+                type: "attention",
+                studentId: personId,
+                studentName,
+              });
+            } else {
+              addEvent({
+                message: `${studentName} is now unfocused`,
+                type: "warning",
+                studentId: personId,
+                studentName,
+              });
+            }
+          }
+
+          // Check for hand raising status change
+          if (prevStatus.handRaised !== handRaised) {
+            if (handRaised) {
+              addEvent({
+                message: `${studentName} has raised their hand`,
+                type: "hand-raising",
+                studentId: personId,
+                studentName,
+              });
+            } else {
+              addEvent({
+                message: `${studentName} has lowered their hand`,
+                type: "info",
+                studentId: personId,
+                studentName,
+              });
+            }
+          }
+        });
+
+        // Update the previous statuses for the next comparison
+        if (isMountedRef.current) {
+          setPreviousStatuses(currentStatuses);
         }
       });
-
-      // Update the previous statuses for the next comparison
-      setPreviousStatuses(currentStatuses);
     },
     [lectureId, students, addEvent]
   );

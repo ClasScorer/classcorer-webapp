@@ -92,7 +92,8 @@ export function CircularDialogWidget({
 }: CircularDialogWidgetProps) {
   const [isInternalDialogOpen, setIsInternalDialogOpen] = useState(false);
   const [activeAnimation, setActiveAnimation] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutsRef = useRef<NodeJS.Timeout[]>([]);  // Track all timeouts
+  const isMountedRef = useRef(true);  // Track if component is mounted
   
   // State for the associate dialog
   const [isAssociateDialogOpen, setIsAssociateDialogOpen] = useState(false);
@@ -105,9 +106,33 @@ export function CircularDialogWidget({
     height: number;
   } | null>(null);
   
+  // Helper function to add timeout with cleanup tracking
+  const addTimeout = useCallback((callback: () => void, delay: number) => {
+    const timeout = setTimeout(() => {
+      // Remove from tracking array
+      timeoutsRef.current = timeoutsRef.current.filter(t => t !== timeout);
+      if (isMountedRef.current) {
+        callback();
+      }
+    }, delay);
+    
+    // Add to tracking array
+    timeoutsRef.current.push(timeout);
+    
+    return timeout;
+  }, []);
+  
+  // Clean up all timeouts
+  const clearAllTimeouts = useCallback(() => {
+    timeoutsRef.current.forEach(timeout => clearTimeout(timeout));
+    timeoutsRef.current = [];
+  }, []);
+  
   // Determine if dialog is controlled externally or internally
   const isDialogOpen = isOpen !== undefined ? isOpen : isInternalDialogOpen;
-  const setIsDialogOpen = (open: boolean) => {
+  const setIsDialogOpen = useCallback((open: boolean) => {
+    if (!isMountedRef.current) return;
+    
     setIsInternalDialogOpen(open);
     if (onOpenChange) {
       onOpenChange(open);
@@ -116,22 +141,24 @@ export function CircularDialogWidget({
     // Start entrance animation
     if (open) {
       setActiveAnimation(true);
+    } else {
+      // Clear timeouts when closing dialog
+      clearAllTimeouts();
     }
-  };
+  }, [onOpenChange, clearAllTimeouts]);
   
   const [hoveredSegment, setHoveredSegment] = useState<number | null>(null);
   const [selectedSegment, setSelectedSegment] = useState<number | null>(null);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   
-  // Clean up animation timeouts
+  // Clean up timeouts on unmount
   useEffect(() => {
     return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      isMountedRef.current = false;
+      clearAllTimeouts();
     };
-  }, []);
+  }, [clearAllTimeouts]);
 
   // Function to get bounding box data from canvas
   const getBoundingBoxFromCanvas = useCallback(() => {
@@ -209,7 +236,7 @@ export function CircularDialogWidget({
         setSelectedSegment(null);
         
         // Slight delay to allow the wheel dialog to close
-        setTimeout(() => {
+        addTimeout(() => {
           setIsAssociateDialogOpen(true);
         }, 300);
       } else {
@@ -221,7 +248,7 @@ export function CircularDialogWidget({
     
     // For other actions, continue with standard flow
     // Delay dialog close to show the selection animation
-    timeoutRef.current = setTimeout(() => {
+    addTimeout(() => {
       // Show toast with action
       setToastMessage(`${option.description} action applied`);
       setShowToast(true);
@@ -236,9 +263,9 @@ export function CircularDialogWidget({
       setSelectedSegment(null);
       
       // Hide toast after delay
-      timeoutRef.current = setTimeout(() => setShowToast(false), 1500);
+      addTimeout(() => setShowToast(false), 1500);
     }, 300);
-  }, [onSelect, setIsDialogOpen, getBoundingBoxFromCanvas]);
+  }, [onSelect, setIsDialogOpen, getBoundingBoxFromCanvas, addTimeout]);
 
   // Handle hover
   const handleSegmentHover = useCallback((segmentIndex: number) => {

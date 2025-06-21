@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 
@@ -38,6 +38,9 @@ export function useLectureManagement({
 }: UseLectureManagementProps): UseLectureManagementResult {
   const router = useRouter()
   
+  // Add ref to track if component is mounted
+  const isMountedRef = useRef(true)
+  
   // Lecture state
   const [lectureId, setLectureId] = useState<string | null>(null)
   const [lectureStarted, setLectureStarted] = useState(false)
@@ -74,6 +77,12 @@ export function useLectureManagement({
     }
     
     const interval = setInterval(() => {
+      // Only update state if component is still mounted
+      if (!isMountedRef.current) {
+        clearInterval(interval)
+        return
+      }
+      
       setElapsedSeconds(prev => {
         const newSeconds = prev + 1
         // Check if duration exceeded
@@ -85,7 +94,7 @@ export function useLectureManagement({
     }, 1000)
     
     setDurationInterval(interval)
-  }, [durationInterval, durationMinutes])
+  }, [durationMinutes])
   
   // Function to pause the stopwatch
   const pauseStopwatch = useCallback(() => {
@@ -274,6 +283,10 @@ export function useLectureManagement({
   // Clean up on unmount
   useEffect(() => {
     return () => {
+      // Mark component as unmounted
+      isMountedRef.current = false
+      
+      // Clear any active intervals
       if (durationInterval) {
         clearInterval(durationInterval)
       }
