@@ -14,6 +14,7 @@ import {
   Trophy,
   Bug,
   UserCog,
+  Search,
   type LucideIcon
 } from "lucide-react"
 import { useSession } from "next-auth/react"
@@ -107,6 +108,11 @@ const baseNavMain: Array<NavItem | NavLabel> = [
     title: "Leaderboard",
     url: "/dashboard/leaderboard",
     icon: Trophy,
+  },
+  {
+    title: "Canvas Explorer",
+    url: "/dashboard/canvas-explorer",
+    icon: Search,
   },
   {
     type: 'label' as const,

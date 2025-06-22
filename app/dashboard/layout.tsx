@@ -85,6 +85,7 @@ export default function DashboardLayout({
     if (pathname === '/dashboard/students') return 'Students'
     if (pathname === '/dashboard/courses') return 'Courses'
     if (pathname === '/dashboard/calendar') return 'Calendar'
+    if (pathname === '/dashboard/canvas-explorer') return 'Canvas Explorer'
     if (currentCourse) return currentCourse.name
     return 'Overview'
   }
