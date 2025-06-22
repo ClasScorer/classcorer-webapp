@@ -219,7 +219,9 @@ export function CircularDialogWidget({
 
   // Handle segment click with animation
   const handleSegmentClick = useCallback((segmentIndex: number) => {
+    console.log('handleSegmentClick called with index:', segmentIndex);
     const option = classroomOptions[segmentIndex];
+    console.log('Selected option:', option);
     
     // Set selected segment for animation
     setSelectedSegment(segmentIndex);
@@ -247,24 +249,23 @@ export function CircularDialogWidget({
     }
     
     // For other actions, continue with standard flow
-    // Delay dialog close to show the selection animation
-    addTimeout(() => {
-      // Show toast with action
-      setToastMessage(`${option.description} action applied`);
-      setShowToast(true);
-      
-      // Call callback with the option value
-      if (onSelect) {
-        onSelect(option.value);
-      }
-      
-      // Close dialog
-      setIsDialogOpen(false);
-      setSelectedSegment(null);
-      
-      // Hide toast after delay
-      addTimeout(() => setShowToast(false), 1500);
-    }, 300);
+    // Show toast with action immediately
+    setToastMessage(`${option.description} action applied`);
+    setShowToast(true);
+    
+    // Call callback with the option value
+    if (onSelect) {
+      console.log('Calling onSelect with value:', option.value);
+      onSelect(option.value);
+    }
+    
+    // Close dialog
+    console.log('Attempting to close dialog...');
+    setIsDialogOpen(false);
+    setSelectedSegment(null);
+    
+    // Hide toast after delay
+    addTimeout(() => setShowToast(false), 1500);
   }, [onSelect, setIsDialogOpen, getBoundingBoxFromCanvas, addTimeout]);
 
   // Handle hover
@@ -351,6 +352,7 @@ export function CircularDialogWidget({
                       textAnchor="middle"
                       dominantBaseline="middle"
                       filter="drop-shadow(0px 1px 1px rgba(109, 40, 217, 0.2))"
+                      style={{ pointerEvents: "none" }}
                     >
                       Actions
                     </text>
@@ -400,7 +402,8 @@ export function CircularDialogWidget({
                               transition: "all 0.15s ease",
                               filter: isHovered ? `drop-shadow(0px 1px 1px ${option.color}80)` : "none",
                               transform: isHovered ? "scale(1.05)" : "scale(1)",
-                              transformOrigin: "center"
+                              transformOrigin: "center",
+                              pointerEvents: "none"
                             }}
                           >
                             {option.icon}
@@ -418,7 +421,8 @@ export function CircularDialogWidget({
                               dominantBaseline="middle"
                               style={{ 
                                 transition: "opacity 0.15s ease",
-                                opacity: isHovered ? 1 : 0
+                                opacity: isHovered ? 1 : 0,
+                                pointerEvents: "none"
                               }}
                             >
                               {option.description}

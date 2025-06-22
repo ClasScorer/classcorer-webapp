@@ -14,6 +14,7 @@ services:
       - NEXTAUTH_URL=http://localhost:3000
       # In production, use a proper secret
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - GATEWAY_URL=http://10.55.205.205:8000
     depends_on:
       - postgres
     restart: always

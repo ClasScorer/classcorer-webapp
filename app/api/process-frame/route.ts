@@ -5,14 +5,17 @@ export async function POST(request: NextRequest) {
     // Get the form data from the request
     const formData = await request.formData();
     
-    // Forward the request to the mock API server
-    const response = await fetch('http://localhost:8000/api/process-frame', {
+    // Get gateway URL from environment variable, fallback to localhost for dev
+    const gatewayUrl = process.env.GATEWAY_URL || 'http://localhost:8000';
+    
+    // Forward the request to the gateway API server
+    const response = await fetch(`${gatewayUrl}/api/process-frame`, {
       method: 'POST',
       body: formData,
     });
     
     if (!response.ok) {
-      console.error(`Mock API server responded with status: ${response.status}`);
+      console.error(`Gateway API server responded with status: ${response.status}`);
       const errorText = await response.text();
       console.error(`Error response: ${errorText}`);
       return new NextResponse(
@@ -24,7 +27,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Get the JSON response from the mock API
+    // Get the JSON response from the gateway API
     const data = await response.json();
     
     // Return the response to the client

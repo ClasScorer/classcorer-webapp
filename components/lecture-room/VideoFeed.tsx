@@ -127,6 +127,8 @@ export function VideoFeed({
 
   // Handle dialog option selection
   const handleOptionSelect = useCallback((optionValue: number) => {
+    console.log('handleOptionSelect called with value:', optionValue);
+    console.log('clickedFace:', clickedFace);
     if (!clickedFace) return;
     
     const { faceData, student } = clickedFace;
@@ -136,13 +138,12 @@ export function VideoFeed({
     const focusScore = faceData.attentionMetrics?.focusScore || 0;
     const attentionStatus = faceData.attention_status || 'unknown';
     
-    // Record the action in the database (stub for now)
+    // Record the action in the database
     const recordStudentAction = async (action: string, points: number, details: string) => {
-      // This would be an API call in a real implementation
       try {
         console.log(`Recording action: ${action} for student ${studentId}, points: ${points}, details: ${details}`);
         
-        // Simulate API call to record the action
+        // Make API call to record the action (endpoint not yet implemented)
         // await fetch('/api/student-actions', {
         //   method: 'POST',
         //   headers: { 'Content-Type': 'application/json' },

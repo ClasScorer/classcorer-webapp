@@ -13,6 +13,7 @@ services:
       - NODE_ENV=development
       - NEXTAUTH_URL=http://localhost:3000
       - NEXTAUTH_SECRET=somesecretvalue
+      - GATEWAY_URL=http://10.55.205.205:8000
     depends_on:
       - postgres
     volumes:
