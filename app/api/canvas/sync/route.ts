@@ -69,8 +69,7 @@ export async function POST(req: NextRequest) {
 
     // Step 1: Find the Canvas user by email
     const usersResponse = await fetch(`${apiUrl}/users`, { 
-      headers,
-      signal: AbortSignal.timeout(30000)
+      headers
     });
 
     if (!usersResponse.ok) {
@@ -96,8 +95,7 @@ export async function POST(req: NextRequest) {
 
     // Step 2: Get user's courses from Canvas
     const coursesResponse = await fetch(`${apiUrl}/users/${canvasUser.id}/courses`, {
-      headers,
-      signal: AbortSignal.timeout(30000)
+      headers
     });
 
     if (!coursesResponse.ok) {
@@ -132,7 +130,7 @@ export async function POST(req: NextRequest) {
         let localCourse = await prisma.course.findFirst({
           where: {
             OR: [
-              { canvasCourseId: canvasCourse.id },
+              { canvasCourseId: String(canvasCourse.id) },
               { 
                 AND: [
                   { code: canvasCourse.course_code || `CANVAS-${canvasCourse.id}` },
@@ -143,6 +141,20 @@ export async function POST(req: NextRequest) {
           }
         });
 
+        // If no course found by Canvas ID or code+instructor, check if code exists globally
+        let proposedCode = canvasCourse.course_code || `CANVAS-${canvasCourse.id}`;
+        if (!localCourse) {
+          const existingCourseWithCode = await prisma.course.findUnique({
+            where: { code: proposedCode }
+          });
+          
+          if (existingCourseWithCode) {
+            // Generate a unique code by appending instructor info
+            proposedCode = `${proposedCode}-${session.user.id.slice(-8)}`;
+            console.log(`Code conflict detected, using unique code: ${proposedCode}`);
+          }
+        }
+
         console.log(`Existing course found: ${localCourse ? 'Yes' : 'No'}`);
 
         if (localCourse) {
@@ -152,8 +164,8 @@ export async function POST(req: NextRequest) {
               where: { id: localCourse.id },
               data: {
                 name: canvasCourse.name,
-                code: canvasCourse.course_code || `CANVAS-${canvasCourse.id}`,
-                canvasCourseId: canvasCourse.id,
+                code: proposedCode,
+                canvasCourseId: String(canvasCourse.id),
                 startDate: canvasCourse.start_at ? new Date(canvasCourse.start_at) : null,
                 endDate: canvasCourse.end_at ? new Date(canvasCourse.end_at) : null,
               }
@@ -171,8 +183,8 @@ export async function POST(req: NextRequest) {
             localCourse = await prisma.course.create({
               data: {
                 name: canvasCourse.name,
-                code: canvasCourse.course_code || `CANVAS-${canvasCourse.id}`,
-                canvasCourseId: canvasCourse.id,
+                code: proposedCode,
+                canvasCourseId: String(canvasCourse.id),
                 instructorId: session.user.id,
                 startDate: canvasCourse.start_at ? new Date(canvasCourse.start_at) : null,
                 endDate: canvasCourse.end_at ? new Date(canvasCourse.end_at) : null,
@@ -195,8 +207,7 @@ export async function POST(req: NextRequest) {
           const studentsResponse = await fetch(
             `${apiUrl}/courses/${canvasCourse.id}/users?enrollment_type[]=student`,
             {
-              headers,
-              signal: AbortSignal.timeout(15000)
+              headers
             }
           );
 
@@ -212,8 +223,7 @@ export async function POST(req: NextRequest) {
             
             // Get all users first
             const allUsersResponse = await fetch(`${apiUrl}/users`, { 
-              headers,
-              signal: AbortSignal.timeout(15000)
+              headers
             });
             
             if (!allUsersResponse.ok) {
@@ -226,8 +236,7 @@ export async function POST(req: NextRequest) {
             for (const user of allUsers) {
               try {
                 const userCoursesResponse = await fetch(`${apiUrl}/users/${user.id}/courses`, {
-                  headers,
-                  signal: AbortSignal.timeout(10000)
+                  headers
                 });
                 
                 if (userCoursesResponse.ok) {
@@ -285,7 +294,7 @@ export async function POST(req: NextRequest) {
             let localStudent = await prisma.student.findFirst({
               where: {
                 OR: [
-                  { canvasStudentId: canvasStudent.id },
+                  { canvasStudentId: String(canvasStudent.id) },
                   { email: canvasStudent.email }
                 ]
               }
@@ -301,7 +310,7 @@ export async function POST(req: NextRequest) {
                   data: {
                     name: canvasStudent.name,
                     email: canvasStudent.email,
-                    canvasStudentId: canvasStudent.id,
+                    canvasStudentId: String(canvasStudent.id),
                     professorId: session.user.id,
                   }
                 });
@@ -319,7 +328,7 @@ export async function POST(req: NextRequest) {
                   data: {
                     name: canvasStudent.name,
                     email: canvasStudent.email,
-                    canvasStudentId: canvasStudent.id,
+                    canvasStudentId: String(canvasStudent.id),
                     professorId: session.user.id,
                   }
                 });

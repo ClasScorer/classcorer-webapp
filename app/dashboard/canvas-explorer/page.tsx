@@ -143,8 +143,7 @@ const CanvasExplorerPage = () => {
     
     try {
       const response = await fetch(`${formData.apiUrl}/users`, { 
-        headers,
-        signal: AbortSignal.timeout(30000)
+        headers
       });
       
       debugLogEntry(`User search response: ${response.status}`, response.ok ? 'success' : 'error');
@@ -172,7 +171,7 @@ const CanvasExplorerPage = () => {
       
     } catch (error: any) {
       debugLogEntry(`Error finding user: ${error.message}`, 'error');
-      if (error.name === 'AbortError') throw new Error('TIMEOUT');
+      if (error.name === 'AbortError') throw new Error('REQUEST_ABORTED');
       if (error.name === 'TypeError' && error.message.includes('fetch')) throw new Error('NETWORK_ERROR');
       throw error;
     }
@@ -191,8 +190,7 @@ const CanvasExplorerPage = () => {
     
     try {
       const response = await fetch(`${formData.apiUrl}/users/${userId}/courses`, { 
-        headers,
-        signal: AbortSignal.timeout(30000)
+        headers
       });
       
       debugLogEntry(`Courses response: ${response.status}`, response.ok ? 'success' : 'error');
@@ -215,7 +213,7 @@ const CanvasExplorerPage = () => {
       
     } catch (error: any) {
       debugLogEntry(`Error fetching courses: ${error.message}`, 'error');
-      if (error.name === 'AbortError') throw new Error('TIMEOUT');
+      if (error.name === 'AbortError') throw new Error('REQUEST_ABORTED');
       if (error.name === 'TypeError' && error.message.includes('fetch')) throw new Error('NETWORK_ERROR');
       throw error;
     }
@@ -239,18 +237,9 @@ const CanvasExplorerPage = () => {
       const fullUrl = `${formData.apiUrl}/courses/${courseId}/users?${params.toString()}`;
       debugLogEntry(`Fetching students from: ${fullUrl}`);
       
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        debugLogEntry(`⏰ Request timeout for course ${courseId} after 15 seconds`, 'error');
-        controller.abort();
-      }, 15000);
-      
       const response = await fetch(fullUrl, { 
-        headers,
-        signal: controller.signal
+        headers
       });
-      
-      clearTimeout(timeoutId);
       
       debugLogEntry(`Response status for course ${courseId}: ${response.status}`, response.ok ? 'success' : 'error');
       
@@ -330,16 +319,9 @@ const CanvasExplorerPage = () => {
     try {
       debugLogEntry(`Trying workaround: getting all users and filtering by course ${courseId}`);
       
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        debugLogEntry(`⏰ Alternative method timeout after 15 seconds`, 'error');
-        controller.abort();
-      }, 15000);
-      
       // Get all users first
       const usersResponse = await fetch(`${formData.apiUrl}/users`, { 
-        headers,
-        signal: controller.signal
+        headers
       });
       
       if (!usersResponse.ok) {
@@ -354,10 +336,9 @@ const CanvasExplorerPage = () => {
       
       for (const user of allUsers) {
         try {
-          const userCoursesResponse = await fetch(`${formData.apiUrl}/users/${user.id}/courses`, {
-            headers,
-            signal: controller.signal
-          });
+                      const userCoursesResponse = await fetch(`${formData.apiUrl}/users/${user.id}/courses`, {
+              headers
+            });
           
           if (userCoursesResponse.ok) {
             const userCourses = await userCoursesResponse.json();
@@ -378,9 +359,8 @@ const CanvasExplorerPage = () => {
         } catch (userError: any) {
           debugLogEntry(`Failed to get courses for user ${user.id}: ${userError.message}`, 'error');
         }
-      }
+              }
       
-      clearTimeout(timeoutId);
       debugLogEntry(`Found ${courseStudents.length} students in course ${courseId} using workaround method`, 'success');
       
       return courseStudents;
@@ -497,8 +477,7 @@ const CanvasExplorerPage = () => {
       debugLogEntry(`Testing base URL: ${formData.apiUrl}`);
       
       const response = await fetch(`${formData.apiUrl}/users`, {
-        headers,
-        signal: AbortSignal.timeout(10000)
+        headers
       });
       
       debugLogEntry(`✅ Connection successful! Status: ${response.status}`, 'success');
@@ -516,7 +495,7 @@ const CanvasExplorerPage = () => {
       debugLogEntry(`❌ Connection failed: ${error.message}`, 'error');
       
       if (error.name === 'AbortError') {
-        showAlert('error', 'Connection Test Failed', 'API request timed out after 10 seconds. Check if the server is running.');
+        showAlert('error', 'Connection Test Failed', 'API request was aborted. Check if the server is running.');
       } else {
         showAlert('error', 'Connection Test Failed', `Cannot reach API server at ${formData.apiUrl}. Please verify the server is running and URL is correct.`);
       }
@@ -535,7 +514,7 @@ const CanvasExplorerPage = () => {
       'SERVER_ERROR': 'Server error occurred. Please try again later.',
       'NETWORK_ERROR': 'Network connection failed. Please check your internet connection.',
       'CONNECTION_FAILED': 'Cannot connect to API server. Server may be down or unreachable.',
-      'TIMEOUT': 'Request timed out after 15 seconds. The server is not responding.',
+      'REQUEST_ABORTED': 'Request was cancelled or aborted.',
       'INVALID_RESPONSE': 'Invalid response from server. The data format is unexpected.',
     };
     
@@ -619,6 +598,71 @@ const CanvasExplorerPage = () => {
     }
   };
 
+  const syncSingleCourse = async (course: Course) => {
+    if (!validateInputs()) return;
+    
+    setIsLoading(true);
+    setLoadingMessage(`Syncing course "${course.name}" to database...`);
+    clearAlerts();
+    
+    try {
+      debugLogEntry(`=== Syncing single course: ${course.name} ===`);
+      
+      const response = await fetch('/api/canvas/sync-course', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          apiUrl: formData.apiUrl,
+          authToken: formData.authToken,
+          course: course,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Course sync failed');
+      }
+      
+      debugLogEntry(`✅ Course sync completed successfully!`, 'success');
+      debugLogEntry(`Course ${result.result.courseCreated ? 'created' : result.result.courseUpdated ? 'updated' : 'processed'}`, 'success');
+      debugLogEntry(`Students processed: ${result.result.studentsProcessed}`, 'success');
+      debugLogEntry(`Students created: ${result.result.studentsCreated}`, 'success');
+      debugLogEntry(`Students updated: ${result.result.studentsUpdated}`, 'success');
+      debugLogEntry(`Enrollments created: ${result.result.enrollmentsCreated}`, 'success');
+      
+      if (result.result.errors.length > 0) {
+        debugLogEntry(`⚠️ ${result.result.errors.length} errors occurred:`, 'error');
+        result.result.errors.forEach((error: string) => {
+          debugLogEntry(`• ${error}`, 'error');
+        });
+      }
+      
+      const summary = [
+        `Successfully added "${course.name}" to your account!`,
+        '',
+        `📚 Course: ${result.result.courseCreated ? 'Created' : result.result.courseUpdated ? 'Updated' : 'Processed'}`,
+        `👥 Students: ${result.result.studentsCreated} created, ${result.result.studentsUpdated} updated`,
+        `🔗 Enrollments: ${result.result.enrollmentsCreated} created`,
+        '',
+        result.result.errors.length > 0 
+          ? `⚠️ ${result.result.errors.length} errors occurred (see debug log for details)`
+          : '✅ No errors occurred'
+      ].join('\n');
+      
+      showAlert('success', 'Course Added', summary);
+      
+    } catch (error: any) {
+      debugLogEntry(`❌ Course sync failed: ${error.message}`, 'error');
+      showAlert('error', 'Course Sync Failed', `Failed to add course to your account: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+      setLoadingMessage('');
+    }
+  };
+
   const reloadCourseStudents = async (courseId: string) => {
     try {
       setIsLoading(true);
@@ -650,7 +694,7 @@ const CanvasExplorerPage = () => {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Canvas LMS User Explorer</h1>
         <p className="text-muted-foreground">
-          Enter an email to explore user details, courses, and enrolled students
+          Enter an email to explore user details, courses, and enrolled students. You can sync all data to your database or add individual courses to your account.
         </p>
       </div>
 
@@ -913,15 +957,27 @@ const CanvasExplorerPage = () => {
                     <AlertDescription>
                       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                         <span>Unable to load student roster</span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => reloadCourseStudents(course.id)}
-                          disabled={isLoading}
-                        >
-                          <RefreshCw className="mr-1 h-3 w-3" />
-                          Retry
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => reloadCourseStudents(course.id)}
+                            disabled={isLoading || isSyncing}
+                          >
+                            <RefreshCw className="mr-1 h-3 w-3" />
+                            Retry
+                          </Button>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => syncSingleCourse(course)}
+                            disabled={isLoading || isSyncing}
+                            className="bg-blue-600 hover:bg-blue-700"
+                          >
+                            <Download className="mr-1 h-3 w-3" />
+                            Add to Account
+                          </Button>
+                        </div>
                       </div>
                       <p className="text-sm text-muted-foreground mt-2">
                         This may be due to permissions, network issues, or the course being inactive.
@@ -930,9 +986,21 @@ const CanvasExplorerPage = () => {
                   </Alert>
                 ) : course.students && course.students.length > 0 ? (
                   <div>
-                    <div className="flex items-center space-x-2 mb-4">
-                      <Users className="h-4 w-4" />
-                      <h4 className="font-medium">Students ({course.students.length})</h4>
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center space-x-2">
+                        <Users className="h-4 w-4" />
+                        <h4 className="font-medium">Students ({course.students.length})</h4>
+                      </div>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => syncSingleCourse(course)}
+                        disabled={isLoading || isSyncing}
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        <Download className="mr-1 h-3 w-3" />
+                        Add to Account
+                      </Button>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                       {course.students.map((student) => (
@@ -958,7 +1026,17 @@ const CanvasExplorerPage = () => {
                 ) : (
                   <div className="text-center py-8 text-muted-foreground">
                     <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm italic">No students enrolled</p>
+                    <p className="text-sm italic mb-4">No students enrolled</p>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => syncSingleCourse(course)}
+                      disabled={isLoading || isSyncing}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      <Download className="mr-1 h-3 w-3" />
+                      Add to Account
+                    </Button>
                   </div>
                 )}
               </div>

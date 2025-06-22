@@ -9,21 +9,21 @@ datasource db {
 }
 
 model User {
-  id             String          @id @default(cuid())
-  name           String
-  email          String          @unique
-  password       String
-  role           UserRole        @default(PROFESSOR)
-  department     String?
-  avatar         String?
-  timezone       String?
-  language       String?         @default("English")
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  canvasConfig   CanvasConfig?
-  courses        Course[]
-  students       Student[]
-  actions        StudentAction[] @relation("StudentActions")
+  id           String          @id @default(cuid())
+  name         String
+  email        String          @unique
+  password     String
+  role         UserRole        @default(PROFESSOR)
+  department   String?
+  avatar       String?
+  timezone     String?
+  language     String?         @default("English")
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  canvasConfig CanvasConfig?
+  courses      Course[]
+  students     Student[]
+  actions      StudentAction[] @relation("StudentActions")
 }
 
 model Course {
@@ -46,22 +46,22 @@ model Course {
 }
 
 model Student {
-  id              String                  @id @default(cuid())
+  id              String                 @id @default(cuid())
   name            String
-  email           String                  @unique
+  email           String                 @unique
   avatar          String?
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
   professorId     String?
   canvasStudentId String?
   attendances     Attendance[]
-  engagements     StudentEngagement[]
-  professor       User?                   @relation(fields: [professorId], references: [id])
+  mappings        PersonStudentMapping[]
+  professor       User?                  @relation(fields: [professorId], references: [id])
+  actions         StudentAction[]
   badges          StudentBadge[]
+  engagements     StudentEngagement[]
   enrollments     StudentEnrollment[]
   submissions     Submission[]
-  actions         StudentAction[]
-  mappings        PersonStudentMapping[]
 }
 
 model StudentEnrollment {
@@ -111,30 +111,30 @@ model Submission {
 }
 
 model Lecture {
-  id          String                   @id @default(cuid())
+  id          String                 @id @default(cuid())
   title       String
   description String?
   date        DateTime
   duration    Int?
-  createdAt   DateTime                 @default(now())
-  updatedAt   DateTime                 @updatedAt
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
   courseId    String
-  isActive    Boolean                  @default(false)
+  isActive    Boolean                @default(false)
   attendances Attendance[]
-  engagements StudentEngagement[]
-  course      Course                   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  actions     StudentAction[]
+  course      Course                 @relation(fields: [courseId], references: [id], onDelete: Cascade)
   mappings    PersonStudentMapping[]
+  actions     StudentAction[]
+  engagements StudentEngagement[]
 }
 
 model Attendance {
   id        String           @id @default(cuid())
   status    AttendanceStatus @default(PRESENT)
   createdAt DateTime         @default(now())
-  joinTime  DateTime?
-  leaveTime DateTime?
   studentId String
   lectureId String
+  joinTime  DateTime?
+  leaveTime DateTime?
   lecture   Lecture          @relation(fields: [lectureId], references: [id], onDelete: Cascade)
   student   Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
@@ -186,80 +186,70 @@ model CanvasConfig {
 }
 
 model ScoringConfig {
-  id                    String    @id @default(cuid())
-  userId                String    @unique
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @default(now())
-
-  // Scoring Settings
-  participationScore    Int       @default(5)
-  engagementScore      Int       @default(5)
-  attendanceScore      Int       @default(5)
-  answerScore          Int       @default(15)
-  talkingBadScore      Int       @default(-10)
-  attendanceBadScore   Int       @default(-10)
-  repeatedBadScore     Int       @default(-20)
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @default(now())
+  participationScore Int      @default(5)
+  engagementScore    Int      @default(5)
+  attendanceScore    Int      @default(5)
+  answerScore        Int      @default(15)
+  talkingBadScore    Int      @default(-10)
+  attendanceBadScore Int      @default(-10)
+  repeatedBadScore   Int      @default(-20)
 }
 
 model ThresholdConfig {
-  id                    String    @id @default(cuid())
-  userId                String    @unique
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @default(now())
-
-  // Threshold Settings
-  attendanceThreshold   Int       @default(70)
-  engagementThreshold   Int       @default(60)
-  atRiskThreshold       Int       @default(60)
-  maxScoreThreshold     Int       @default(100)
-  minScoreThreshold     Int       @default(0)
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @default(now())
+  attendanceThreshold Int      @default(70)
+  engagementThreshold Int      @default(60)
+  atRiskThreshold     Int      @default(60)
+  maxScoreThreshold   Int      @default(100)
+  minScoreThreshold   Int      @default(0)
 }
 
 model DecayConfig {
-  id                    String    @id @default(cuid())
-  userId                String    @unique
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @default(now())
-
-  // Decay Settings
-  decayRate            Float     @default(0.5)
-  decayInterval        Int       @default(1)
-  decayThreshold       Float     @default(0.5)
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+  decayRate      Float    @default(0.5)
+  decayInterval  Int      @default(1)
+  decayThreshold Float    @default(0.5)
 }
 
 model BonusConfig {
-  id                    String    @id @default(cuid())
-  userId                String    @unique
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @default(now())
-
-  // Bonus Settings
-  enableThreeStreak    Boolean   @default(true)
-  threeStreakBonus     Int       @default(10)
-  enableFiveStreak     Boolean   @default(true)
-  fiveStreakBonus      Int       @default(20)
-  constantEngagementBonus Int     @default(20)
+  id                      String   @id @default(cuid())
+  userId                  String   @unique
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @default(now())
+  enableThreeStreak       Boolean  @default(true)
+  threeStreakBonus        Int      @default(10)
+  enableFiveStreak        Boolean  @default(true)
+  fiveStreakBonus         Int      @default(20)
+  constantEngagementBonus Int      @default(20)
 }
 
 model AdvancedConfig {
-  id                    String    @id @default(cuid())
-  userId                String    @unique
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @default(now())
-
-  // Advanced Settings
-  automaticRiskDetection Boolean  @default(true)
-  realTimeAnalytics     Boolean   @default(true)
-  engagementNotifications Boolean @default(true)
+  id                      String   @id @default(cuid())
+  userId                  String   @unique
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @default(now())
+  automaticRiskDetection  Boolean  @default(true)
+  realTimeAnalytics       Boolean  @default(true)
+  engagementNotifications Boolean  @default(true)
 }
 
 model Deadzone {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   userId      String
   name        String
-  coordinates Json      // Store the deadzone coordinates as JSON
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @default(now())
+  coordinates Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now())
 
   @@unique([userId, name])
 }
@@ -267,25 +257,25 @@ model Deadzone {
 model StudentEngagement {
   id                 String   @id @default(cuid())
   timestamp          DateTime @default(now())
-  attentionDuration  Int      @default(0) // Duration in seconds student was focused
+  attentionDuration  Int      @default(0)
   distractionCount   Int      @default(0)
-  focusScore         Int      @default(0) // 0-100 percentage
+  focusScore         Int      @default(0)
   handRaisedCount    Int      @default(0)
   recognitionStatus  String   @default("known")
-  engagementLevel    String   @default("medium") // high, medium, low
-  detectionCount     Int      @default(0) // How many times detected in this lecture
+  engagementLevel    String   @default("medium")
+  detectionCount     Int      @default(0)
   averageConfidence  Float    @default(0)
   lectureId          String
   studentId          String
+  detectionSnapshots Json[]
   lecture            Lecture  @relation(fields: [lectureId], references: [id], onDelete: Cascade)
   student            Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  detectionSnapshots Json[]   // Store array of detection data snapshots
 
   @@unique([studentId, lectureId])
 }
 
 model StudentAction {
-  id           String           @id @default(cuid())
+  id           String            @id @default(cuid())
   type         StudentActionType
   studentId    String
   lectureId    String
@@ -293,13 +283,13 @@ model StudentAction {
   points       Int?
   reason       String?
   details      Json?
-  timestamp    DateTime         @default(now())
-  status       ActionStatus     @default(COMPLETED)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  student      Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  lecture      Lecture          @relation(fields: [lectureId], references: [id], onDelete: Cascade)
-  instructor   User             @relation("StudentActions", fields: [instructorId], references: [id], onDelete: Cascade)
+  timestamp    DateTime          @default(now())
+  status       ActionStatus      @default(COMPLETED)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  instructor   User              @relation("StudentActions", fields: [instructorId], references: [id], onDelete: Cascade)
+  lecture      Lecture           @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  student      Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@index([lectureId])
   @@index([studentId])
@@ -307,17 +297,17 @@ model StudentAction {
 }
 
 model PersonStudentMapping {
-  id        String   @id @default(cuid())
-  personId  String   // AI-generated person ID from face detection
-  studentId String
-  lectureId String
+  id         String   @id @default(cuid())
+  personId   String
+  studentId  String
+  lectureId  String
   confidence Float
-  frameData String?  // Optional base64 frame data for verification
-  verified  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  lecture   Lecture  @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  frameData  String?
+  verified   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  lecture    Lecture  @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([personId, lectureId])
   @@index([studentId])
