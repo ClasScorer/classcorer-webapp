@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, AlertCircle, CheckCircle, RefreshCw, Users, Calendar, UserCircle } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle, RefreshCw, Users, Calendar, UserCircle, Download } from 'lucide-react';
 
 interface User {
   id: string;
@@ -70,6 +70,7 @@ const CanvasExplorerPage = () => {
     title: string;
     message: string;
   }>>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const debugLogEntry = useCallback((message: string, type: 'info' | 'success' | 'error' = 'info') => {
     if (!debugMode) return;
@@ -551,6 +552,73 @@ const CanvasExplorerPage = () => {
     return new Date(dateString).toLocaleDateString();
   };
 
+  const syncWithDatabase = async () => {
+    if (!validateInputs()) return;
+    
+    setIsSyncing(true);
+    setLoadingMessage('Syncing Canvas data to database...');
+    clearAlerts();
+    
+    try {
+      debugLogEntry('=== Canvas Database Sync Started ===');
+      
+      const response = await fetch('/api/canvas/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          apiUrl: formData.apiUrl,
+          authToken: formData.authToken,
+          userEmail: formData.email,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Sync failed');
+      }
+      
+      debugLogEntry(`✅ Sync completed successfully!`, 'success');
+      debugLogEntry(`Courses processed: ${result.result.coursesProcessed}`, 'success');
+      debugLogEntry(`Courses created: ${result.result.coursesCreated}`, 'success');
+      debugLogEntry(`Courses updated: ${result.result.coursesUpdated}`, 'success');
+      debugLogEntry(`Students processed: ${result.result.studentsProcessed}`, 'success');
+      debugLogEntry(`Students created: ${result.result.studentsCreated}`, 'success');
+      debugLogEntry(`Students updated: ${result.result.studentsUpdated}`, 'success');
+      debugLogEntry(`Enrollments created: ${result.result.enrollmentsCreated}`, 'success');
+      
+      if (result.result.errors.length > 0) {
+        debugLogEntry(`⚠️ ${result.result.errors.length} errors occurred:`, 'error');
+        result.result.errors.forEach((error: string) => {
+          debugLogEntry(`• ${error}`, 'error');
+        });
+      }
+      
+      const summary = [
+        'Successfully synced Canvas data to database!',
+        '',
+        `📚 Courses: ${result.result.coursesCreated} created, ${result.result.coursesUpdated} updated`,
+        `👥 Students: ${result.result.studentsCreated} created, ${result.result.studentsUpdated} updated`,
+        `🔗 Enrollments: ${result.result.enrollmentsCreated} created`,
+        '',
+        result.result.errors.length > 0 
+          ? `⚠️ ${result.result.errors.length} errors occurred (see debug log for details)`
+          : '✅ No errors occurred'
+      ].join('\n');
+      
+      showAlert('success', 'Sync Complete', summary);
+      
+    } catch (error: any) {
+      debugLogEntry(`❌ Sync failed: ${error.message}`, 'error');
+      showAlert('error', 'Sync Failed', `Failed to sync Canvas data: ${error.message}`);
+    } finally {
+      setIsSyncing(false);
+      setLoadingMessage('');
+    }
+  };
+
   const reloadCourseStudents = async (courseId: string) => {
     try {
       setIsLoading(true);
@@ -651,12 +719,12 @@ const CanvasExplorerPage = () => {
                 type="button"
                 variant="outline"
                 onClick={testApiConnection}
-                disabled={isLoading}
+                disabled={isLoading || isSyncing}
               >
                 <CheckCircle className="mr-2 h-4 w-4" />
                 Test API Connection
               </Button>
-              <Button type="submit" disabled={isLoading}>
+              <Button type="submit" disabled={isLoading || isSyncing}>
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -664,6 +732,25 @@ const CanvasExplorerPage = () => {
                   </>
                 ) : (
                   'Search User'
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="default"
+                onClick={syncWithDatabase}
+                disabled={isLoading || isSyncing}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {isSyncing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {loadingMessage || 'Syncing...'}
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4" />
+                    Sync to Database
+                  </>
                 )}
               </Button>
             </div>
