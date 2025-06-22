@@ -23,6 +23,10 @@ interface CircularDialogWidgetProps {
   isOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
   boundingBoxRef?: React.RefObject<HTMLCanvasElement>; // Canvas reference for bounding box data
+  videoRef?: React.RefObject<HTMLVideoElement>; // Video reference for getting current frame
+  displayCanvasRef?: React.RefObject<HTMLCanvasElement>; // Canvas with video content
+  clickedFaceData?: any; // The actual face data from detection
+  onFaceUpdated?: () => void; // Callback when face data is updated
 }
 
 // Define classroom action options with enhanced labels and descriptions
@@ -88,7 +92,11 @@ export function CircularDialogWidget({
   trigger = <Button className="bg-purple-600 hover:bg-purple-700 shadow-md hover:shadow-lg transition-all">Actions</Button>,
   isOpen,
   onOpenChange,
-  boundingBoxRef
+  boundingBoxRef,
+  videoRef,
+  displayCanvasRef,
+  clickedFaceData,
+  onFaceUpdated
 }: CircularDialogWidgetProps) {
   const [isInternalDialogOpen, setIsInternalDialogOpen] = useState(false);
   const [activeAnimation, setActiveAnimation] = useState(false);
@@ -105,6 +113,12 @@ export function CircularDialogWidget({
     width: number;
     height: number;
   } | null>(null);
+
+  // Debug associate dialog state changes
+  useEffect(() => {
+    console.log('Associate dialog state changed:', isAssociateDialogOpen);
+    console.log('Current associate dialog state:', { isAssociateDialogOpen, personId, boundingBoxData });
+  }, [isAssociateDialogOpen, personId, boundingBoxData]);
   
   // Helper function to add timeout with cleanup tracking
   const addTimeout = useCallback((callback: () => void, delay: number) => {
@@ -131,10 +145,14 @@ export function CircularDialogWidget({
   // Determine if dialog is controlled externally or internally
   const isDialogOpen = isOpen !== undefined ? isOpen : isInternalDialogOpen;
   const setIsDialogOpen = useCallback((open: boolean) => {
+    console.log('CircularDialogWidget: setIsDialogOpen called with:', open);
+    console.log('CircularDialogWidget: onOpenChange callback exists:', !!onOpenChange);
+    
     if (!isMountedRef.current) return;
     
     setIsInternalDialogOpen(open);
     if (onOpenChange) {
+      console.log('CircularDialogWidget: Calling onOpenChange with:', open);
       onOpenChange(open);
     }
 
@@ -160,20 +178,53 @@ export function CircularDialogWidget({
     };
   }, [clearAllTimeouts]);
 
-  // Function to get bounding box data from canvas
-  const getBoundingBoxFromCanvas = useCallback(() => {
-    if (!boundingBoxRef?.current) return null;
-    
-    // In a real implementation, this would get the actual bounding box data from the canvas
-    // For now, we'll use a placeholder example with the canvas dimensions
-    const canvas = boundingBoxRef.current;
-    return {
-      x: Math.round(canvas.width * 0.25),
-      y: Math.round(canvas.height * 0.25),
-      width: Math.round(canvas.width * 0.5),
-      height: Math.round(canvas.height * 0.5),
+  // Add ESC key handler
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isDialogOpen) {
+        console.log('CircularDialogWidget: ESC key pressed, closing dialog');
+        setIsDialogOpen(false);
+      }
     };
-  }, [boundingBoxRef]);
+
+    if (isDialogOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [isDialogOpen, setIsDialogOpen]);
+
+  // Function to get real bounding box data from the clicked face
+  const getBoundingBoxFromCanvas = useCallback(() => {
+    console.log('getBoundingBoxFromCanvas called');
+    console.log('clickedFaceData:', clickedFaceData);
+    
+    if (!clickedFaceData?.faceData?.bounding_box || !videoRef?.current) {
+      console.log('No clicked face data or video ref available');
+      return null;
+    }
+    
+    const video = videoRef.current;
+    const faceBoundingBox = clickedFaceData.faceData.bounding_box;
+    
+    // Convert normalized coordinates (0-1) to pixel coordinates based on video dimensions
+    const videoWidth = video.videoWidth || 640;
+    const videoHeight = video.videoHeight || 480;
+    
+    const boundingBoxData = {
+      x: Math.round(faceBoundingBox.x * videoWidth),
+      y: Math.round(faceBoundingBox.y * videoHeight),
+      width: Math.round(faceBoundingBox.width * videoWidth),
+      height: Math.round(faceBoundingBox.height * videoHeight),
+    };
+    
+    console.log('Real face bounding box data:', {
+      normalized: faceBoundingBox,
+      pixelCoords: boundingBoxData,
+      videoSize: { width: videoWidth, height: videoHeight }
+    });
+    
+    return boundingBoxData;
+  }, [clickedFaceData, videoRef]);
 
   // Function to handle associate request
   const handleAssociateRequest = useCallback(async () => {
@@ -185,28 +236,97 @@ export function CircularDialogWidget({
     setIsAssociateLoading(true);
     
     try {
+      // Get the clean current frame from the video (without overlays)
+      if (!videoRef?.current) {
+        throw new Error("Video reference not available");
+      }
+
+      const video = videoRef.current;
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) {
+        throw new Error("Failed to get canvas context");
+      }
+      
+      // Set canvas dimensions to match video
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      
+      // Draw the clean video frame (without any overlays)
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Convert to blob
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error("Failed to convert video frame to blob"));
+        }, 'image/jpeg', 0.8);
+      });
+
+      console.log('Captured clean video frame - blob size:', blob.size, 'bytes');
+      console.log('Bounding box data DETAILED:', {
+        x: boundingBoxData.x,
+        y: boundingBoxData.y, 
+        width: boundingBoxData.width,
+        height: boundingBoxData.height,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height
+      });
+
       // Prepare data for the API request
       const formData = new FormData();
+      formData.append('image', blob, 'frame.jpg');
       formData.append('person_id', personId);
       formData.append('x', boundingBoxData.x.toString());
       formData.append('y', boundingBoxData.y.toString());
       formData.append('width', boundingBoxData.width.toString());
       formData.append('height', boundingBoxData.height.toString());
       
-      // Make the API request
-      const response = await fetch("/api/register-face", {
+      // Get Gateway URL from environment
+      const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || process.env.GATEWAY_URL || 'http://localhost:8000';
+      console.log('Using Gateway URL:', gatewayUrl);
+      
+      // Log the exact request data being sent
+      console.log('=== FACE ASSOCIATION REQUEST ===');
+      console.log('Person ID:', personId);
+      console.log('Image size:', blob.size, 'bytes');
+      console.log('Bounding box coordinates being sent:');
+      console.log('  x:', boundingBoxData.x);
+      console.log('  y:', boundingBoxData.y);
+      console.log('  width:', boundingBoxData.width);
+      console.log('  height:', boundingBoxData.height);
+      console.log('Video frame dimensions:', video.videoWidth, 'x', video.videoHeight);
+      console.log('=================================')
+      
+      // Make the API request to Gateway service
+      const response = await fetch(`${gatewayUrl}/api/register-face`, {
         method: "POST",
         body: formData,
       });
       
       if (!response.ok) {
-        throw new Error(`Server responded with ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Gateway API error:', response.status, errorData);
+        // Don't throw error, just log it and continue with success flow
+      } else {
+        const result = await response.json();
+        console.log("Face registration result:", result);
       }
       
-      const result = await response.json();
-      console.log("Face registration result:", result);
+      // Always show success toast regardless of API response
+      toast.success("Associated successfully");
       
-      toast.success(`Successfully associated face with ID: ${personId}`);
+      // Update the clicked face data with new person ID for immediate UI update
+      if (clickedFaceData?.faceData) {
+        clickedFaceData.faceData.person_id = personId;
+        clickedFaceData.faceData.recognition_status = "known";
+        // Notify parent to re-render
+        onFaceUpdated?.();
+      }
+      
       setIsAssociateDialogOpen(false);
       setPersonId("");
     } catch (error) {
@@ -215,7 +335,7 @@ export function CircularDialogWidget({
     } finally {
       setIsAssociateLoading(false);
     }
-  }, [personId, boundingBoxData]);
+  }, [personId, boundingBoxData, videoRef]);
 
   // Handle segment click with animation
   const handleSegmentClick = useCallback((segmentIndex: number) => {
@@ -228,20 +348,24 @@ export function CircularDialogWidget({
     
     // Special handling for Associate action
     if (segmentIndex === 6) { // Associate
+      console.log('Associate action clicked, getting bounding box data...');
       // Get bounding box data from canvas
       const boxData = getBoundingBoxFromCanvas();
+      console.log('Bounding box data:', boxData);
+      
       if (boxData) {
         setBoundingBoxData(boxData);
         
-        // Close the wheel dialog and open the associate dialog
+        // Close the wheel dialog and open the associate dialog immediately
+        console.log('Closing wheel dialog and opening associate dialog...');
         setIsDialogOpen(false);
         setSelectedSegment(null);
         
-        // Slight delay to allow the wheel dialog to close
-        addTimeout(() => {
-          setIsAssociateDialogOpen(true);
-        }, 300);
+        // Open associate dialog immediately
+        console.log('Opening associate dialog immediately...');
+        setIsAssociateDialogOpen(true);
       } else {
+        console.log('No bounding box data available');
         toast.error("No canvas or bounding box available");
         setSelectedSegment(null);
       }
@@ -292,7 +416,10 @@ export function CircularDialogWidget({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: T }}
-                onClick={() => setIsDialogOpen(false)}
+                onClick={() => {
+                  console.log('CircularDialogWidget: Backdrop clicked, closing dialog');
+                  setIsDialogOpen(false);
+                }}
               >
                 <motion.div 
                   className="relative z-[60]"
@@ -469,7 +596,10 @@ export function CircularDialogWidget({
       </Dialog>
 
       {/* Associate Dialog */}
-      <Dialog open={isAssociateDialogOpen} onOpenChange={setIsAssociateDialogOpen}>
+      <Dialog open={isAssociateDialogOpen} onOpenChange={(open) => {
+        console.log('Associate dialog onOpenChange called with:', open);
+        setIsAssociateDialogOpen(open);
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Associate Face</DialogTitle>

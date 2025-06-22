@@ -235,10 +235,7 @@ export function useFaceDetection({
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
     }
     
-    // Create a cache for the avatar image to avoid reloading for each face
-    let avatarImage: HTMLImageElement | null = null
-
-    // Draw each face with an avatar instead of a box
+    // Draw simple green bounding boxes for each face
     faceData.faces.forEach(face => {
       const { x, y, width, height } = face.bounding_box
       
@@ -249,115 +246,66 @@ export function useFaceDetection({
       const boxHeight = height * canvas.height
       
       // Set styles based on attention status
-      const color = face.attention_status === "focused" ? '#4CAF50' : '#F44336'
+      const color = face.attention_status === "focused" ? '#10B981' : '#EF4444'
 
-      // Load the avatar image if it's not already loaded
-      if (!avatarImage) {
-        avatarImage = new Image()
-        avatarImage.src = '/avataaars.svg'
-      }
+      // Draw bounding box
+      ctx.strokeStyle = color
+      ctx.lineWidth = 3
+      ctx.strokeRect(boxX, boxY, boxWidth, boxHeight)
 
-      // Draw the avatar image if loaded
-      if (avatarImage.complete) {
-        renderAvatar()
-      } else {
-        // Set up a callback to render the avatar once the image loads
-        avatarImage.onload = renderAvatar
-      }
-
-      function renderAvatar() {
-        if (!ctx || !avatarImage) return
-
-        // Calculate a size that fits within the bounding box but maintains aspect ratio
-        const avatarAspectRatio = 264 / 280 // width/height of the SVG
-        const avatarHeight = boxHeight * 1.2 // Make it slightly larger than the box
-        const avatarWidth = avatarHeight * avatarAspectRatio
-
-        // Center the avatar on the face
-        const avatarX = boxX + (boxWidth - avatarWidth) / 2
-        const avatarY = boxY - avatarHeight * 0.2 // Position slightly above the actual face detection
-
-        // Draw avatar with a clip path for better visibility
-        ctx.save()
-        
-        // Add drop shadow for better visibility
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.3)'
-        ctx.shadowBlur = 10
-        ctx.shadowOffsetX = 0
-        ctx.shadowOffsetY = 2
-        
-        // Draw the avatar
-        ctx.drawImage(avatarImage, avatarX, avatarY, avatarWidth, avatarHeight)
-        ctx.restore()
-        
-        // Draw status indicators and labels on top of the avatar
-
-        // Add attention status indicator at the top
-        const indicatorSize = boxWidth * 0.15
+      // Draw hand raised indicator if applicable
+      if (face.hand_raising_status.is_hand_raised) {
+        const indicatorSize = Math.min(boxWidth, boxHeight) * 0.15
+        ctx.fillStyle = 'rgba(255, 193, 7, 0.9)'
         ctx.beginPath()
         ctx.arc(
-          boxX + boxWidth / 2, 
-          avatarY - indicatorSize / 2, 
+          boxX + boxWidth - indicatorSize, 
+          boxY + indicatorSize, 
           indicatorSize, 0, 2 * Math.PI
         )
-        ctx.fillStyle = color
         ctx.fill()
         ctx.strokeStyle = 'white'
         ctx.lineWidth = 2
         ctx.stroke()
-
-        // Draw hand raised indicator if applicable
-        if (face.hand_raising_status.is_hand_raised) {
-          ctx.fillStyle = 'rgba(255, 193, 7, 0.9)'
-          ctx.beginPath()
-          ctx.arc(
-            boxX + boxWidth + indicatorSize / 2, 
-            boxY + indicatorSize, 
-            indicatorSize, 0, 2 * Math.PI
-          )
-          ctx.fill()
-          ctx.strokeStyle = 'white'
-          ctx.lineWidth = 1
-          ctx.stroke()
-          
-          // Add hand emoji
-          ctx.font = `${indicatorSize}px Arial`
-          ctx.textAlign = 'center'
-          ctx.textBaseline = 'middle'
-          ctx.fillStyle = 'white'
-          ctx.fillText('✋', boxX + boxWidth + indicatorSize / 2, boxY + indicatorSize)
-        }
         
-        // Add label text with background for better visibility
-        const studentId = face.person_id
-        const student = students.find(s => s.id === studentId)
-        let label = 'Unknown'
-        
-        if (face.recognition_status === "known") {
-          label = student ? student.name : `Person ${face.person_id}`
-        } else if (face.recognition_status === "new") {
-          label = `New Face (${Math.round((face.confidence || 0.5) * 100)}%)`
-        }
-        
-        // Draw name tag at the bottom of the avatar
-        const labelPadding = 6
-        const labelHeight = 22
-        const labelWidth = ctx.measureText(label).width + labelPadding * 2
-        const labelX = boxX + (boxWidth - labelWidth) / 2
-        const labelY = avatarY + avatarHeight
-        
-        // Draw label background
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
-        ctx.roundRect(labelX, labelY, labelWidth, labelHeight, 4)
-        ctx.fill()
-        
-        // Draw label text
-        ctx.fillStyle = '#FFFFFF'
-        ctx.font = 'bold 12px Arial'
+        // Add hand emoji
+        ctx.font = `${indicatorSize * 1.2}px Arial`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
-        ctx.fillText(label, boxX + boxWidth / 2, labelY + labelHeight / 2)
+        ctx.fillStyle = 'white'
+        ctx.fillText('✋', boxX + boxWidth - indicatorSize, boxY + indicatorSize)
       }
+      
+      // Add label text with background for better visibility
+      const studentId = face.person_id
+      // Try both string and number comparison for student lookup
+      const student = students.find(s => s.id === studentId || s.id.toString() === studentId)
+      let label = 'Unknown'
+      
+      if (face.recognition_status === "known") {
+        label = student ? student.name : `ID: ${face.person_id}`
+      } else if (face.recognition_status === "new") {
+        label = `New Face (${Math.round((face.confidence || 0.5) * 100)}%)`
+      }
+      
+      // Draw name tag at the bottom of the bounding box
+      const labelPadding = 6
+      const labelHeight = 22
+      ctx.font = 'bold 12px Arial'
+      const labelWidth = ctx.measureText(label).width + labelPadding * 2
+      const labelX = boxX + (boxWidth - labelWidth) / 2
+      const labelY = boxY + boxHeight + 4
+      
+      // Draw label background
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'
+      ctx.roundRect(labelX, labelY, labelWidth, labelHeight, 4)
+      ctx.fill()
+      
+      // Draw label text
+      ctx.fillStyle = '#FFFFFF'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(label, boxX + boxWidth / 2, labelY + labelHeight / 2)
     })
   }, [faceData, students, isVideoOn, videoRef])
 

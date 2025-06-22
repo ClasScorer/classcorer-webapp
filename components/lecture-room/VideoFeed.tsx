@@ -30,6 +30,28 @@ export function VideoFeed({
   // Add state to manage dialog position and clicked face
   const [dialogPosition, setDialogPosition] = useState({ x: 0, y: 0 });
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  // Add debugging to setIsDialogOpen
+  const handleDialogOpenChange = useCallback((open: boolean) => {
+    console.log('VideoFeed: Dialog open change requested:', open);
+    setIsDialogOpen(open);
+  }, []);
+
+  // Add ESC key handler to close dialog
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isDialogOpen) {
+        console.log('VideoFeed: ESC key pressed, closing dialog');
+        setIsDialogOpen(false);
+        setClickedFace(null);
+      }
+    };
+
+    if (isDialogOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [isDialogOpen]);
   const [clickedFace, setClickedFace] = useState<{
     faceData: any;
     student: Student | null;
@@ -45,6 +67,14 @@ export function VideoFeed({
     studentName: string;
     details?: any;
   } | null>(null);
+  
+  // Add face update trigger to force re-render
+  const [faceUpdateTrigger, setFaceUpdateTrigger] = useState(0);
+  
+  // Callback to handle face updates
+  const handleFaceUpdated = useCallback(() => {
+    setFaceUpdateTrigger(prev => prev + 1);
+  }, []);
 
   // Ensure canvas resolution matches video resolution
   useEffect(() => {
@@ -396,10 +426,14 @@ export function VideoFeed({
       >
         <CircularDialogWidget
           isOpen={isDialogOpen}
-          onOpenChange={setIsDialogOpen}
+          onOpenChange={handleDialogOpenChange}
           onSelect={handleOptionSelect}
           trigger={<div className="w-1 h-1" />}
           boundingBoxRef={boundingBoxCanvasRef}
+          videoRef={videoRef}
+          displayCanvasRef={displayCanvasRef}
+          clickedFaceData={clickedFace}
+          onFaceUpdated={handleFaceUpdated}
         />
       </div>
 
