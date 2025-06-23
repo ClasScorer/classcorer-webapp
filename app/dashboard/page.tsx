@@ -2,6 +2,9 @@ import { Metadata } from "next";
 import { Suspense } from "react";
 import { formatDateServer } from "@/lib/serverActions";
 import { Skeleton } from "@/components/ui/skeleton";
+import { prisma } from "@/lib/prisma";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 // Import server components directly
 import { DashboardHeader } from "@/components/dashboard";
@@ -14,9 +17,6 @@ import {
   ClientCourseOverview, 
   ClientBottomSection 
 } from "@/components/dashboard/ClientComponents";
-
-// Import data fetching functions
-import { getTotalStats, getCourseStats, getCanvasIntegrationStatus } from "../../hooks/dashboard/useDashboardData";
 
 export const metadata: Metadata = {
   title: "Professor Dashboard",
@@ -144,43 +144,372 @@ export default async function DashboardPage() {
 
 // Separate components for data fetching to enable streaming
 async function CanvasIntegrationSection() {
-  const canvasStatus = await getCanvasIntegrationStatus();
-  return <CanvasSection isActive={canvasStatus.isActive} />;
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return <CanvasSection isActive={false} />;
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      include: { canvasConfig: true }
+    });
+    
+    const isActive = user?.canvasConfig?.isActive || false;
+    return <CanvasSection isActive={isActive} />;
+  } catch (error) {
+    console.error("Failed to load Canvas status:", error);
+    return <CanvasSection isActive={false} />;
+  }
 }
 
 async function StatsCardSection() {
-  const totalStats = await getTotalStats();
-  return (
-    <StatCards
-      totalStudents={totalStats.totalStudents}
-      averageAttendance={totalStats.averageAttendance}
-      averagePassRate={totalStats.averagePassRate}
-      atRiskStudents={totalStats.atRiskStudents}
-      upcomingDeadlines={totalStats.upcomingDeadlines}
-      studentTrend={totalStats.studentTrend}
-    />
-  );
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    // Return default stats for non-authenticated users
+    return (
+      <StatCards
+        totalStudents={0}
+        averageAttendance={0}
+        averagePassRate={0}
+        atRiskStudents={0}
+        upcomingDeadlines={[]}
+        studentTrend="down"
+      />
+    );
+  }
+
+  try {
+    // Get actual data from database
+    const [courses, assignments] = await Promise.all([
+      prisma.course.findMany({
+        where: { instructorId: session.user.id },
+        include: {
+          students: {
+            include: {
+              student: {
+                include: {
+                  attendances: true,
+                  submissions: true
+                }
+              }
+            }
+          },
+          assignments: {
+            where: {
+              dueDate: {
+                gte: new Date()
+              }
+            },
+            take: 5,
+            orderBy: {
+              dueDate: 'asc'
+            }
+          }
+        }
+      }),
+      prisma.assignment.findMany({
+        where: {
+          course: {
+            instructorId: session.user.id
+          },
+          dueDate: {
+            gte: new Date(),
+            lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // Next 7 days
+          }
+        },
+        include: {
+          course: true,
+          submissions: true
+        },
+        take: 3,
+        orderBy: {
+          dueDate: 'asc'
+        }
+      })
+    ]);
+
+    // Calculate statistics
+    const allStudents = courses.flatMap(course => course.students.map(enrollment => enrollment.student));
+    const totalStudents = allStudents.length;
+
+    // Calculate average attendance
+    let totalAttendanceScore = 0;
+    let attendanceCount = 0;
+    allStudents.forEach(student => {
+      const attendances = student.attendances;
+      if (attendances.length > 0) {
+        const presentCount = attendances.filter(a => a.status === 'PRESENT').length;
+        const attendanceRate = (presentCount / attendances.length) * 100;
+        totalAttendanceScore += attendanceRate;
+        attendanceCount++;
+      }
+    });
+    const averageAttendance = attendanceCount > 0 ? Math.round(totalAttendanceScore / attendanceCount) : 0;
+
+    // Calculate pass rate (students with submissions)
+    const studentsWithSubmissions = allStudents.filter(student => student.submissions.length > 0);
+    const averagePassRate = totalStudents > 0 ? Math.round((studentsWithSubmissions.length / totalStudents) * 100) : 0;
+
+    // Calculate at-risk students (low attendance or no submissions)
+    const atRiskStudents = allStudents.filter(student => {
+      const hasLowAttendance = student.attendances.length > 0 && 
+        (student.attendances.filter(a => a.status === 'PRESENT').length / student.attendances.length) < 0.7;
+      const hasNoSubmissions = student.submissions.length === 0;
+      return hasLowAttendance || hasNoSubmissions;
+    }).length;
+
+    // Format upcoming deadlines
+    const upcomingDeadlines = assignments.map(assignment => ({
+      course: assignment.course.code,
+      task: assignment.title,
+      dueDate: assignment.dueDate.toLocaleDateString(),
+      submissions: assignment.submissions.length,
+      totalStudents: assignment.course.studentCapacity || 0
+    }));
+
+    // Calculate trend (simple comparison - if more students enrolled recently)
+    const studentTrend = totalStudents > 0 ? 'up' : 'down';
+
+    return (
+      <StatCards
+        totalStudents={totalStudents}
+        averageAttendance={averageAttendance}
+        averagePassRate={averagePassRate}
+        atRiskStudents={atRiskStudents}
+        upcomingDeadlines={upcomingDeadlines}
+        studentTrend={studentTrend}
+      />
+    );
+  } catch (error) {
+    console.error("Failed to load dashboard stats:", error);
+    // Return fallback stats
+    return (
+      <StatCards
+        totalStudents={0}
+        averageAttendance={0}
+        averagePassRate={0}
+        atRiskStudents={0}
+        upcomingDeadlines={[]}
+        studentTrend="down"
+      />
+    );
+  }
 }
 
 async function PerformanceSectionWrapper() {
-  const courseStats = await getCourseStats();
-  return <ClientPerformanceSection courses={courseStats} />;
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return <ClientPerformanceSection courses={[]} />;
+  }
+
+  try {
+    const courses = await prisma.course.findMany({
+      where: { instructorId: session.user.id },
+      include: {
+        students: {
+          include: {
+            student: {
+              include: {
+                attendances: true,
+                submissions: true
+              }
+            }
+          }
+        },
+        assignments: true
+      }
+    });
+
+    // Transform to the expected format
+    const courseStats = courses.map(course => {
+      const enrollments = course.students;
+      const students = enrollments.map(enrollment => enrollment.student);
+      const totalStudents = students.length;
+
+      // Calculate averages
+      let totalAttendanceScore = 0;
+      let attendanceCount = 0;
+      students.forEach(student => {
+        const attendances = student.attendances;
+        if (attendances.length > 0) {
+          const presentCount = attendances.filter(a => a.status === 'PRESENT').length;
+          const attendanceRate = (presentCount / attendances.length) * 100;
+          totalAttendanceScore += attendanceRate;
+          attendanceCount++;
+        }
+      });
+      const averageAttendance = attendanceCount > 0 ? Math.round(totalAttendanceScore / attendanceCount) : 0;
+
+      // Calculate submission rate
+      const totalAssignments = course.assignments.length;
+      let submissionRate = 0;
+      if (totalAssignments > 0 && totalStudents > 0) {
+        const totalPossibleSubmissions = totalAssignments * totalStudents;
+        const totalSubmissions = students.reduce((sum, student) => sum + student.submissions.length, 0);
+        submissionRate = Math.round((totalSubmissions / totalPossibleSubmissions) * 100);
+      }
+
+      // Calculate at-risk count
+      const atRiskCount = students.filter(student => {
+        const hasLowAttendance = student.attendances.length > 0 && 
+          (student.attendances.filter(a => a.status === 'PRESENT').length / student.attendances.length) < 0.7;
+        const hasNoSubmissions = student.submissions.length === 0;
+        return hasLowAttendance || hasNoSubmissions;
+      }).length;
+
+      // Calculate course progress based on time since creation
+      const daysSinceStart = Math.floor((new Date().getTime() - course.createdAt.getTime()) / (24 * 60 * 60 * 1000));
+      const progress = Math.min(100, Math.round((daysSinceStart / 120) * 100)); // Assume 120-day semester
+      const week = Math.ceil(daysSinceStart / 7);
+
+      return {
+        id: course.id,
+        code: course.code,
+        name: course.name,
+        totalStudents,
+        averageAttendance,
+        averageScore: submissionRate, // Using submission rate as score proxy
+        atRiskCount,
+        submissionRate,
+        progress,
+        week,
+        term: `Fall 2024`, // Default term
+        section: 'A', // Default section
+        stats: {
+          classAverage: { value: submissionRate },
+          engagement: { value: averageAttendance },
+          assignments: { value: submissionRate },
+          progress: { value: progress }
+        }
+      };
+    });
+
+    return <ClientPerformanceSection courses={courseStats} />;
+  } catch (error) {
+    console.error("Failed to load course stats:", error);
+    return <ClientPerformanceSection courses={[]} />;
+  }
 }
 
 async function CourseOverviewWrapper() {
-  const courseStats = await getCourseStats();
-  return <ClientCourseOverview courses={courseStats} />;
+  // Same data as PerformanceSectionWrapper
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return <ClientCourseOverview courses={[]} />;
+  }
+
+  try {
+    const courses = await prisma.course.findMany({
+      where: { instructorId: session.user.id },
+      include: {
+        students: {
+          include: {
+            student: {
+              include: {
+                attendances: true,
+                submissions: true
+              }
+            }
+          }
+        },
+        assignments: true
+      }
+    });
+
+    // Transform to the expected format (same as above)
+    const courseStats = courses.map(course => {
+      const enrollments = course.students;
+      const students = enrollments.map(enrollment => enrollment.student);
+      const totalStudents = students.length;
+
+      let totalAttendanceScore = 0;
+      let attendanceCount = 0;
+      students.forEach(student => {
+        const attendances = student.attendances;
+        if (attendances.length > 0) {
+          const presentCount = attendances.filter(a => a.status === 'PRESENT').length;
+          const attendanceRate = (presentCount / attendances.length) * 100;
+          totalAttendanceScore += attendanceRate;
+          attendanceCount++;
+        }
+      });
+      const averageAttendance = attendanceCount > 0 ? Math.round(totalAttendanceScore / attendanceCount) : 0;
+
+      const totalAssignments = course.assignments.length;
+      let submissionRate = 0;
+      if (totalAssignments > 0 && totalStudents > 0) {
+        const totalPossibleSubmissions = totalAssignments * totalStudents;
+        const totalSubmissions = students.reduce((sum, student) => sum + student.submissions.length, 0);
+        submissionRate = Math.round((totalSubmissions / totalPossibleSubmissions) * 100);
+      }
+
+      const atRiskCount = students.filter(student => {
+        const hasLowAttendance = student.attendances.length > 0 && 
+          (student.attendances.filter(a => a.status === 'PRESENT').length / student.attendances.length) < 0.7;
+        const hasNoSubmissions = student.submissions.length === 0;
+        return hasLowAttendance || hasNoSubmissions;
+      }).length;
+
+      // Calculate course progress based on time since creation
+      const daysSinceStart = Math.floor((new Date().getTime() - course.createdAt.getTime()) / (24 * 60 * 60 * 1000));
+      const progress = Math.min(100, Math.round((daysSinceStart / 120) * 100)); // Assume 120-day semester
+      const week = Math.ceil(daysSinceStart / 7);
+
+      return {
+        id: course.id,
+        code: course.code,
+        name: course.name,
+        totalStudents,
+        averageAttendance,
+        averageScore: submissionRate,
+        atRiskCount,
+        submissionRate,
+        progress,
+        week,
+        term: `Fall 2024`, // Default term
+        section: 'A', // Default section
+        stats: {
+          classAverage: { value: submissionRate },
+          engagement: { value: averageAttendance },
+          assignments: { value: submissionRate },
+          progress: { value: progress }
+        }
+      };
+    });
+
+    return <ClientCourseOverview courses={courseStats} />;
+  } catch (error) {
+    console.error("Failed to load course stats:", error);
+    return <ClientCourseOverview courses={[]} />;
+  }
 }
 
 async function BottomSectionWrapper() {
-  const totalStats = await getTotalStats();
+  const session = await getServerSession(authOptions);
+  
+  // Generate mock announcements for now
+  const recentAnnouncements = [
+    {
+      course: 'General',
+      title: 'Welcome to ClassCorer Dashboard',
+      date: new Date().toLocaleDateString(),
+      priority: 'normal' as const,
+    },
+    {
+      course: 'System',
+      title: 'Dashboard now shows real data from your courses',
+      date: new Date(Date.now() - 86400000).toLocaleDateString(),
+      priority: 'high' as const,
+    }
+  ];
   
   // Pre-format the dates server-side once to avoid repeated server calls
   const formattedDateFn = formatDateServer;
   
   return (
     <ClientBottomSection
-      announcements={totalStats.recentAnnouncements}
+      announcements={recentAnnouncements}
       formatDate={formattedDateFn}
     />
   );

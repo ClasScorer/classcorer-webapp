@@ -45,8 +45,12 @@ export async function POST(
       select: { 
         id: true, 
         name: true, 
-        courseId: true,
-        professorId: true 
+        professorId: true,
+        enrollments: {
+          include: {
+            course: true
+          }
+        }
       }
     });
 
@@ -89,7 +93,11 @@ export async function POST(
     }
 
     // Verify the student is enrolled in the lecture's course
-    if (student.courseId !== lecture.courseId) {
+    const isEnrolled = student.enrollments.some(enrollment => 
+      enrollment.course.id === lecture.courseId
+    );
+    
+    if (!isEnrolled) {
       return NextResponse.json(
         { error: 'Student is not enrolled in this course' },
         { status: 400 }
@@ -99,8 +107,7 @@ export async function POST(
     // Get or create scoring configuration for the course
     const scoringConfig = await prisma.scoringConfig.findFirst({
       where: { 
-        courseId: student.courseId,
-        professorId: session.user.id
+        userId: session.user.id
       }
     });
 
@@ -132,6 +139,19 @@ export async function POST(
           select: { title: true, date: true }
         }
       }
+    });
+
+    // Update student's currentScore
+    const currentStudent = await prisma.student.findUnique({
+      where: { id: studentId },
+      select: { currentScore: true }
+    });
+    
+    const newCurrentScore = Math.max(0, (currentStudent?.currentScore || 0) + points);
+    
+    await prisma.student.update({
+      where: { id: studentId },
+      data: { currentScore: newCurrentScore }
     });
 
     // Update student engagement record if it exists

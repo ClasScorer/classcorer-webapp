@@ -50,6 +50,7 @@ model Student {
   name            String
   email           String                 @unique
   avatar          String?
+  currentScore    Int                    @default(0)
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   professorId     String?

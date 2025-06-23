@@ -16,6 +16,7 @@ interface VideoFeedProps {
   faceData: EnhancedFaceDetectionResponse | null
   students: Student[]
   isSimulating?: boolean  // Add flag to indicate simulation mode
+  lectureId?: string | null  // Add lectureId prop
 }
 
 export function VideoFeed({
@@ -25,7 +26,8 @@ export function VideoFeed({
   isVideoOn,
   faceData,
   students,
-  isSimulating = false
+  isSimulating = false,
+  lectureId = null
 }: VideoFeedProps) {
   // Add state to manage dialog position and clicked face
   const [dialogPosition, setDialogPosition] = useState({ x: 0, y: 0 });
@@ -169,27 +171,47 @@ export function VideoFeed({
     const attentionStatus = faceData.attention_status || 'unknown';
     
     // Record the action in the database
-    const recordStudentAction = async (action: string, points: number, details: string) => {
+    const recordStudentAction = async (actionType: string, points: number, reason: string) => {
       try {
-        console.log(`Recording action: ${action} for student ${studentId}, points: ${points}, details: ${details}`);
+        console.log(`Recording action: ${actionType} for student ${studentId}, points: ${points}, reason: ${reason}`);
         
-        // Make API call to record the action (endpoint not yet implemented)
-        // await fetch('/api/student-actions', {
-        //   method: 'POST',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify({
-        //     studentId,
-        //     action,
-        //     points,
-        //     details,
-        //     timestamp: new Date().toISOString()
-        //   })
-        // });
+        if (!lectureId) {
+          console.warn('No lectureId available, cannot record action');
+          toast.error('No active lecture to record action');
+          return false;
+        }
+
+        if (!studentId) {
+          console.warn('No studentId available, cannot record action');
+          toast.error('No student identified');
+          return false;
+        }
+        
+        // Make API call to record the action
+        const response = await fetch(`/api/students/${studentId}/score`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lectureId,
+            points,
+            actionType: points > 0 ? 'award' : 'deduct',
+            reason,
+            timestamp: new Date().toISOString()
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to record action');
+        }
+
+        const result = await response.json();
+        console.log('Action recorded successfully:', result);
         
         return true;
       } catch (error) {
         console.error('Error recording student action:', error);
-        toast.error('Failed to record action');
+        toast.error(`Failed to record action: ${error instanceof Error ? error.message : 'Unknown error'}`);
         return false;
       }
     };

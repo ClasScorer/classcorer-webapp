@@ -24,6 +24,23 @@ interface UseFaceDetectionResult {
   drawFaceBoxes: () => void
   detectionCanvasRef: React.RefObject<HTMLCanvasElement>
   displayCanvasRef: React.RefObject<HTMLCanvasElement>
+  refreshDeadzones: () => Promise<void>
+}
+
+interface DeadzoneCoordinate {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+interface Deadzone {
+  id: string
+  userId: string
+  name: string
+  coordinates: DeadzoneCoordinate[]
+  createdAt: string
+  updatedAt: string
 }
 
 export function useFaceDetection({
@@ -36,9 +53,50 @@ export function useFaceDetection({
   const [detectionInterval, setDetectionInterval] = useState<NodeJS.Timeout | null>(null)
   const [faceData, setFaceData] = useState<EnhancedFaceDetectionResponse | null>(null)
   const [detectionHistory, setDetectionHistory] = useState<EnhancedFaceDetectionResponse[]>([])
+  const [deadzones, setDeadzones] = useState<Deadzone[]>([])
   
   const detectionCanvasRef = useRef<HTMLCanvasElement>(null)
   const displayCanvasRef = useRef<HTMLCanvasElement>(null)
+
+  // Fetch user deadzones on mount
+  useEffect(() => {
+    const fetchDeadzones = async () => {
+      try {
+        const response = await fetch('/api/config/deadzones')
+        if (response.ok) {
+          const userDeadzones = await response.json()
+          setDeadzones(userDeadzones)
+          console.log(`Loaded ${userDeadzones.length} deadzones for face detection`)
+        }
+      } catch (error) {
+        console.warn('Failed to fetch deadzones, proceeding without deadzone filtering:', error)
+      }
+    }
+
+    fetchDeadzones()
+  }, [])
+
+  // Function to apply deadzones to a canvas
+  const applyDeadzones = useCallback((canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) => {
+    if (deadzones.length === 0) return
+
+    // Apply each deadzone by filling with black
+    deadzones.forEach(deadzone => {
+      deadzone.coordinates.forEach(coord => {
+        // Scale coordinates to canvas size (deadzones are stored for 640x480)
+        const scaleX = canvas.width / 640
+        const scaleY = canvas.height / 480
+        
+        const x = coord.x * scaleX
+        const y = coord.y * scaleY
+        const width = coord.width * scaleX
+        const height = coord.height * scaleY
+        
+        ctx.fillStyle = 'black'
+        ctx.fillRect(x, y, width, height)
+      })
+    })
+  }, [deadzones])
 
   // Function to capture a video frame and convert to blob
   const captureVideoFrame = useCallback((): Promise<Blob> => {
@@ -69,7 +127,8 @@ export function useFaceDetection({
       console.log("Attempting to capture frame from video:", {
         videoWidth: video.videoWidth,
         videoHeight: video.videoHeight,
-        readyState: video.readyState
+        readyState: video.readyState,
+        deadzonesCount: deadzones.length
       })
       
       try {
@@ -80,6 +139,12 @@ export function useFaceDetection({
         // Draw the current video frame to the canvas
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
         console.log("Successfully drew video to canvas")
+        
+        // Apply deadzones (blackout areas) before sending to API
+        if (deadzones.length > 0) {
+          applyDeadzones(canvas, ctx)
+          console.log(`Applied ${deadzones.length} deadzones to frame`)
+        }
         
         // Add a timestamp for debugging
         ctx.fillStyle = "rgba(0, 255, 0, 0.5)"
@@ -107,7 +172,7 @@ export function useFaceDetection({
         reject(new Error(`Frame capture error: ${err.message}`))
       }
     })
-  }, [videoRef, isVideoOn])
+  }, [videoRef, isVideoOn, applyDeadzones, deadzones])
 
   // Function to send frame to API and get face detection results
   const sendFrameToAPI = useCallback(async (frameBlob: Blob) => {
@@ -235,6 +300,39 @@ export function useFaceDetection({
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
     }
     
+    // Draw deadzone areas with semi-transparent overlay
+    if (deadzones.length > 0) {
+      deadzones.forEach(deadzone => {
+        deadzone.coordinates.forEach(coord => {
+          // Scale coordinates to canvas size
+          const scaleX = canvas.width / 640
+          const scaleY = canvas.height / 480
+          
+          const x = coord.x * scaleX
+          const y = coord.y * scaleY
+          const width = coord.width * scaleX
+          const height = coord.height * scaleY
+          
+          // Draw deadzone area with semi-transparent red overlay
+          ctx.fillStyle = 'rgba(255, 0, 0, 0.3)'
+          ctx.fillRect(x, y, width, height)
+          
+          // Draw deadzone border
+          ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)'
+          ctx.lineWidth = 2
+          ctx.setLineDash([5, 5])
+          ctx.strokeRect(x, y, width, height)
+          ctx.setLineDash([])
+          
+          // Add "DEADZONE" label
+          ctx.fillStyle = 'rgba(255, 0, 0, 0.9)'
+          ctx.font = 'bold 12px Arial'
+          ctx.textAlign = 'center'
+          ctx.fillText('DEADZONE', x + width / 2, y + height / 2)
+        })
+      })
+    }
+    
     // Draw simple green bounding boxes for each face
     faceData.faces.forEach(face => {
       const { x, y, width, height } = face.bounding_box
@@ -307,7 +405,7 @@ export function useFaceDetection({
       ctx.textBaseline = 'middle'
       ctx.fillText(label, boxX + boxWidth / 2, labelY + labelHeight / 2)
     })
-  }, [faceData, students, isVideoOn, videoRef])
+  }, [faceData, students, isVideoOn, videoRef, deadzones])
 
   // Start face detection with the given lecture ID
   const startFaceDetection = useCallback((currentLectureId: string) => {
@@ -471,6 +569,31 @@ export function useFaceDetection({
     }
   }, [])
 
+  // Function to refresh deadzones
+  const refreshDeadzones = useCallback(async () => {
+    try {
+      const response = await fetch('/api/config/deadzones')
+      if (response.ok) {
+        const userDeadzones = await response.json()
+        setDeadzones(userDeadzones)
+        console.log(`Refreshed ${userDeadzones.length} deadzones for face detection`)
+      }
+    } catch (error) {
+      console.error('Failed to refresh deadzones:', error)
+    }
+  }, [])
+
+  // Add window focus listener to refresh deadzones when user returns to page
+  useEffect(() => {
+    const handleWindowFocus = () => {
+      console.log('Window focused, refreshing deadzones...')
+      refreshDeadzones()
+    }
+
+    window.addEventListener('focus', handleWindowFocus)
+    return () => window.removeEventListener('focus', handleWindowFocus)
+  }, [refreshDeadzones])
+
   return {
     isDetecting,
     faceData,
@@ -480,6 +603,7 @@ export function useFaceDetection({
     captureVideoFrame,
     drawFaceBoxes,
     detectionCanvasRef,
-    displayCanvasRef
+    displayCanvasRef,
+    refreshDeadzones
   }
 } 

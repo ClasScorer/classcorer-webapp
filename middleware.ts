@@ -11,8 +11,19 @@ export default withAuth(
     
     // If this is an API route
     if (req.nextUrl.pathname.startsWith("/api")) {
-      // All API routes require a valid token with user ID
-      if (!token || !token.id) {
+      // Define public API routes that don't require authentication
+      const publicApiRoutes = [
+        "/api/register",
+        "/api/auth", // NextAuth routes (signin, callback, etc.)
+      ];
+      
+      // Check if this is a public route
+      const isPublicRoute = publicApiRoutes.some(route => 
+        req.nextUrl.pathname.startsWith(route)
+      );
+      
+      // Only require auth for non-public API routes
+      if (!isPublicRoute && (!token || !token.id)) {
         console.log("Middleware - API Auth failed, returning 401");
         return new NextResponse(
           JSON.stringify({ error: "Unauthorized: API access requires authentication" }),

@@ -1,10 +1,6 @@
 import { getCourseById } from './data';
 import { prisma } from './prisma';
 
-// Canvas API base URL and token will be fetched from environment variables
-const CANVAS_API_URL = process.env.CANVAS_API_URL || '';
-const CANVAS_API_TOKEN = process.env.CANVAS_API_TOKEN || '';
-
 // Types for Canvas API responses
 export interface CanvasCourse {
   id: number;
@@ -50,15 +46,47 @@ export interface CanvasSubmission {
   late: boolean;
 }
 
-// Utility function to make authenticated requests to Canvas API
-async function canvasApiFetch(endpoint: string, options: RequestInit = {}) {
-  if (!CANVAS_API_URL || !CANVAS_API_TOKEN) {
-    throw new Error('Canvas API URL or token is not configured');
+// Get Canvas config for a user
+async function getUserCanvasConfig(userId: string) {
+  const config = await prisma.canvasConfig.findUnique({
+    where: { userId }
+  });
+  
+  if (!config || !config.isActive) {
+    throw new Error('Canvas integration not configured or not active');
+  }
+  
+  return config;
+}
+
+// Utility function to make authenticated requests to Canvas API using user's config
+async function canvasApiFetch(endpoint: string, userId: string, options: RequestInit = {}) {
+  const config = await getUserCanvasConfig(userId);
+
+  const url = `${config.apiUrl}${endpoint}`;
+  const headers = {
+    'Authorization': `Bearer ${config.apiToken}`,
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Canvas API error: ${response.status} ${response.statusText}`);
   }
 
-  const url = `${CANVAS_API_URL}${endpoint}`;
+  return response.json();
+}
+
+// Alternative function for direct config usage (for sync operations)
+async function canvasApiFetchWithConfig(endpoint: string, config: { apiUrl: string; apiToken: string }, options: RequestInit = {}) {
+  const url = `${config.apiUrl}${endpoint}`;
   const headers = {
-    'Authorization': `Bearer ${CANVAS_API_TOKEN}`,
+    'Authorization': `Bearer ${config.apiToken}`,
     'Content-Type': 'application/json',
     ...options.headers,
   };
@@ -76,9 +104,9 @@ async function canvasApiFetch(endpoint: string, options: RequestInit = {}) {
 }
 
 // Fetch courses from Canvas
-export async function fetchCanvasCourses(): Promise<CanvasCourse[]> {
+export async function fetchCanvasCourses(userId: string): Promise<CanvasCourse[]> {
   try {
-    return await canvasApiFetch('/courses?include[]=total_students&state[]=available');
+    return await canvasApiFetch('/courses?include[]=total_students&state[]=available', userId);
   } catch (error) {
     console.error('Error fetching Canvas courses:', error);
     return [];
@@ -86,9 +114,9 @@ export async function fetchCanvasCourses(): Promise<CanvasCourse[]> {
 }
 
 // Fetch students enrolled in a specific course
-export async function fetchCanvasStudents(canvasCourseId: number): Promise<CanvasStudent[]> {
+export async function fetchCanvasStudents(canvasCourseId: number, userId: string): Promise<CanvasStudent[]> {
   try {
-    return await canvasApiFetch(`/courses/${canvasCourseId}/users?enrollment_type[]=student&include[]=avatar_url&include[]=enrollments`);
+    return await canvasApiFetch(`/courses/${canvasCourseId}/users?enrollment_type[]=student&include[]=avatar_url&include[]=enrollments`, userId);
   } catch (error) {
     console.error(`Error fetching Canvas students for course ${canvasCourseId}:`, error);
     return [];
@@ -96,9 +124,9 @@ export async function fetchCanvasStudents(canvasCourseId: number): Promise<Canva
 }
 
 // Fetch assignments for a specific course
-export async function fetchCanvasAssignments(canvasCourseId: number): Promise<CanvasAssignment[]> {
+export async function fetchCanvasAssignments(canvasCourseId: number, userId: string): Promise<CanvasAssignment[]> {
   try {
-    return await canvasApiFetch(`/courses/${canvasCourseId}/assignments`);
+    return await canvasApiFetch(`/courses/${canvasCourseId}/assignments`, userId);
   } catch (error) {
     console.error(`Error fetching Canvas assignments for course ${canvasCourseId}:`, error);
     return [];
@@ -106,9 +134,9 @@ export async function fetchCanvasAssignments(canvasCourseId: number): Promise<Ca
 }
 
 // Fetch submissions for a specific assignment
-export async function fetchCanvasSubmissions(canvasCourseId: number, assignmentId: number): Promise<CanvasSubmission[]> {
+export async function fetchCanvasSubmissions(canvasCourseId: number, assignmentId: number, userId: string): Promise<CanvasSubmission[]> {
   try {
-    return await canvasApiFetch(`/courses/${canvasCourseId}/assignments/${assignmentId}/submissions`);
+    return await canvasApiFetch(`/courses/${canvasCourseId}/assignments/${assignmentId}/submissions`, userId);
   } catch (error) {
     console.error(`Error fetching Canvas submissions for assignment ${assignmentId}:`, error);
     return [];

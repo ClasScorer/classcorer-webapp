@@ -8,6 +8,7 @@ import { useLectureManagement } from "@/hooks/lecture-room/useLectureManagement"
 import { usePresentationManager } from "@/hooks/lecture-room/usePresentationManager"
 import { useChatManager } from "@/hooks/lecture-room/useChatManager"
 import { useLectureEvents } from "@/hooks/lecture-room/useLectureEvents"
+import { useGamificationProcessor } from "@/hooks/lecture-room/useGamificationProcessor"
 import { ControlPanel } from "./ControlPanel"
 import { VideoFeed } from "./VideoFeed"
 import { DetectionAnalysis } from "./DetectionAnalysis"
@@ -78,6 +79,15 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
     lectureId: lecture.lectureId,
     students
   })
+
+  // Use gamification processor hook for automatic point awarding
+  const gamification = useGamificationProcessor({
+    lectureId: lecture.lectureId,
+    faceData: detection.faceData,
+    students,
+    isLectureActive: lecture.lectureStarted && !lecture.isPaused,
+    processingInterval: 30000 // Process every 30 seconds
+  })
   
   // Process face detection results to generate events
   useEffect(() => {
@@ -140,6 +150,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
             startFaceDetection={detection.startFaceDetection}
             stopFaceDetection={detection.stopFaceDetection}
             simulateDetection={detection.simulateDetection}
+            refreshDeadzones={detection.refreshDeadzones}
             startNewLecture={lecture.startNewLecture}
             endLecture={lecture.endLecture}
             confirmDeleteLecture={lecture.confirmDeleteLecture}
@@ -159,6 +170,7 @@ export function LectureRoom({ course, students }: LectureRoomProps) {
             isVideoOn={isVideoOn}
             faceData={detection.faceData}
             students={students}
+            lectureId={lecture.lectureId}
           />
         </div>
       </div>

@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Metadata } from "next"
 import { Trophy, Medal, Star, Flame, Target, Zap, Award, Crown, Sparkles, Share2, Settings } from "lucide-react"
 import {
@@ -35,95 +36,22 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
-// Mock data with more realistic student information
-const students = [
-  {
-    id: 1,
-    name: "James Wilson",
-    avatar: "/avatars/1.png",
-    score: 2480,
-    level: 15,
-    badges: ["Top Performer", "Perfect Attendance", "Quiz Master"],
-    progress: 85,
-    trend: "up",
-    streak: 12,
-    recentAchievement: "Completed Advanced SQL Challenge",
-    course: "Database Systems",
-    grade: "A+",
-  },
-  {
-    id: 2,
-    name: "Sarah Chen",
-    avatar: "/avatars/2.png",
-    score: 2350,
-    level: 14,
-    badges: ["Quick Learner", "Team Player", "Project Ace"],
-    progress: 92,
-    trend: "up",
-    streak: 8,
-    recentAchievement: "Best Project Submission",
-    course: "Web Development",
-    grade: "A",
-  },
-  {
-    id: 3,
-    name: "Michael Brown",
-    avatar: "/avatars/3.png",
-    score: 2200,
-    level: 13,
-    badges: ["Consistent Performer", "Problem Solver"],
-    progress: 78,
-    trend: "stable",
-    streak: 5,
-    recentAchievement: "Top Quiz Score",
-    course: "Machine Learning",
-    grade: "A-",
-  },
-  {
-    id: 4,
-    name: "Emily Davis",
-    avatar: "/avatars/4.png",
-    score: 2150,
-    level: 12,
-    badges: ["Rising Star", "Fast Learner"],
-    progress: 88,
-    trend: "up",
-    streak: 7,
-    recentAchievement: "Most Improved Student",
-    course: "Database Systems",
-    grade: "B+",
-  },
-  {
-    id: 5,
-    name: "David Kim",
-    avatar: "/avatars/5.png",
-    score: 2100,
-    level: 12,
-    badges: ["Dedicated Learner"],
-    progress: 72,
-    trend: "up",
-    streak: 4,
-    recentAchievement: "Consistent Progress",
-    course: "Web Development",
-    grade: "B+",
-  },
-  {
-    id: 6,
-    name: "Lisa Wang",
-    avatar: "/avatars/6.png",
-    score: 2050,
-    level: 11,
-    badges: ["Team Contributor"],
-    progress: 65,
-    trend: "stable",
-    streak: 3,
-    recentAchievement: "Great Team Project",
-    course: "Machine Learning",
-    grade: "B",
-  },
-]
+interface Student {
+  id: string;
+  name: string;
+  avatar?: string;
+  currentScore: number;
+  level: number;
+  badges: string[];
+  progress: number;
+  trend: "up" | "down" | "stable";
+  streak: number;
+  recentAchievement?: string;
+  courses: string[];
+  enrollments: any[];
+}
 
-function TopThree() {
+function TopThree({ students }: { students: Student[] }) {
   const [first, second, third] = students.slice(0, 3)
   
   return (
@@ -146,7 +74,7 @@ function TopThree() {
             </Avatar>
             <div className="mt-4 text-center">
               <div className="font-bold">{second.name}</div>
-              <div className="text-sm font-medium bg-gradient-to-r from-[#C0C0C0] to-[#A0A0A0] bg-clip-text text-transparent">{second.score} pts</div>
+              <div className="text-sm font-medium bg-gradient-to-r from-[#C0C0C0] to-[#A0A0A0] bg-clip-text text-transparent">{second.currentScore} pts</div>
               <div className="mt-2 flex flex-wrap justify-center gap-1">
                 {second.badges.map((badge) => (
                   <Badge key={badge} variant="secondary" className="text-[10px] bg-[#C0C0C0]/10 hover:bg-[#C0C0C0]/20 transition-colors">
@@ -183,7 +111,7 @@ function TopThree() {
             </Avatar>
             <div className="mt-4 text-center">
               <div className="text-lg font-bold bg-gradient-to-r from-[#FFD700] via-[#FFA500] to-[#FF8C00] bg-clip-text text-transparent">{first.name}</div>
-              <div className="text-sm font-medium">{first.score} pts</div>
+              <div className="text-sm font-medium">{first.currentScore} pts</div>
               <div className="mt-2 flex flex-wrap justify-center gap-1">
                 {first.badges.map((badge) => (
                   <Badge key={badge} variant="secondary" className="text-[10px] bg-[#FFD700]/10 hover:bg-[#FFD700]/20 transition-colors">
@@ -221,7 +149,7 @@ function TopThree() {
             </Avatar>
             <div className="mt-4 text-center">
               <div className="font-bold">{third.name}</div>
-              <div className="text-sm font-medium bg-gradient-to-r from-[#CD7F32] to-[#A05A32] bg-clip-text text-transparent">{third.score} pts</div>
+              <div className="text-sm font-medium bg-gradient-to-r from-[#CD7F32] to-[#A05A32] bg-clip-text text-transparent">{third.currentScore} pts</div>
               <div className="mt-2 flex flex-wrap justify-center gap-1">
                 {third.badges.map((badge) => (
                   <Badge key={badge} variant="secondary" className="text-[10px] bg-[#CD7F32]/10 hover:bg-[#CD7F32]/20 transition-colors">
@@ -238,7 +166,7 @@ function TopThree() {
   )
 }
 
-function LeaderboardList() {
+function LeaderboardList({ students }: { students: Student[] }) {
   return (
     <div className="space-y-4">
       {students.slice(3).map((student, index) => (
@@ -266,13 +194,11 @@ function LeaderboardList() {
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <span>Level {student.level}</span>
                     <span>•</span>
-                    <span>{student.course}</span>
-                    <span>•</span>
-                    <span className="font-medium">{student.grade}</span>
+                    <span>{student.courses.join(', ')}</span>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="font-semibold group-hover:text-primary transition-colors">{student.score} pts</div>
+                  <div className="font-semibold group-hover:text-primary transition-colors">{student.currentScore} pts</div>
                   <div className="flex gap-1">
                     {student.badges.map((badge) => (
                       <Badge key={badge} variant="secondary" className="text-xs group-hover:bg-primary/10 transition-colors">
@@ -326,11 +252,111 @@ function LeaderboardList() {
 }
 
 export default function AdminLeaderboardPage() {
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const shareUrl = `${process.env.NEXT_PUBLIC_APP_URL}/leaderboard`
+
+  useEffect(() => {
+    fetchLeaderboardData();
+  }, []);
+
+  const fetchLeaderboardData = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/students/leaderboard');
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch leaderboard data');
+      }
+      
+      const data = await response.json();
+      
+      // Transform the data to match our interface
+      const transformedStudents: Student[] = data.students.map((student: any) => ({
+        id: student.id,
+        name: student.name,
+        avatar: student.avatar,
+        currentScore: student.currentScore || 0,
+        level: Math.floor((student.currentScore || 0) / 100) + 1, // Simple level calculation
+        badges: student.badges?.map((b: any) => b.badge?.name || 'Badge') || [],
+        progress: ((student.currentScore || 0) % 100), // Progress to next level
+        trend: determineScoreTrend(student.recentActions || []),
+        streak: calculateStreak(student.attendances || []),
+        recentAchievement: student.recentActions?.[0]?.reason || 'No recent activity',
+        courses: student.enrollments?.map((e: any) => e.course?.name || 'Unknown Course') || [],
+        enrollments: student.enrollments || []
+      }));
+
+      setStudents(transformedStudents);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const determineScoreTrend = (recentActions: any[]): "up" | "down" | "stable" => {
+    if (recentActions.length === 0) return "stable";
+    
+    const recentPoints = recentActions.slice(0, 5).reduce((sum, action) => sum + (action.points || 0), 0);
+    if (recentPoints > 0) return "up";
+    if (recentPoints < 0) return "down";
+    return "stable";
+  };
+
+  const calculateStreak = (attendances: any[]): number => {
+    // Calculate attendance streak from recent attendances
+    let streak = 0;
+    const sortedAttendances = attendances
+      .filter(a => a.status === 'PRESENT')
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    for (let i = 0; i < sortedAttendances.length; i++) {
+      const current = new Date(sortedAttendances[i].date);
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - (i + 1));
+      
+      if (current.toDateString() === yesterday.toDateString()) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+    return streak;
+  };
 
   const handleShare = () => {
     navigator.clipboard.writeText(shareUrl)
     // Add toast notification here
+  }
+
+  if (loading) {
+    return (
+      <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Loading leaderboard...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex-1 space-y-6 p-4 md:p-8 pt-6">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <p className="text-red-500 mb-4">Error: {error}</p>
+            <Button onClick={fetchLeaderboardData} variant="outline">
+              Retry
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -386,8 +412,16 @@ export default function AdminLeaderboardPage() {
 
       <Card className="border-primary/20">
         <CardContent className="pt-6">
-          <TopThree />
-          <LeaderboardList />
+          {students.length >= 3 ? (
+            <>
+              <TopThree students={students} />
+              <LeaderboardList students={students} />
+            </>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">Not enough students for leaderboard display</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

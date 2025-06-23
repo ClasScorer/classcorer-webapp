@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Video, VideoOff, Mic, MicOff, Square, X, Bug } from "lucide-react"
+import { Video, VideoOff, Mic, MicOff, Square, X, Bug, RefreshCw } from "lucide-react"
 
 interface ControlPanelProps {
   lectureStarted: boolean
@@ -22,6 +22,7 @@ interface ControlPanelProps {
   startFaceDetection: (lectureId: string) => void
   stopFaceDetection: () => void
   simulateDetection: () => void
+  refreshDeadzones: () => Promise<void>
   startNewLecture: (scheduledTime?: Date) => Promise<string | null>
   endLecture: () => Promise<void>
   confirmDeleteLecture: (lectureId: string) => void
@@ -50,6 +51,7 @@ export function ControlPanel({
   startFaceDetection,
   stopFaceDetection,
   simulateDetection,
+  refreshDeadzones,
   startNewLecture,
   endLecture,
   confirmDeleteLecture,
@@ -217,6 +219,15 @@ export function ControlPanel({
             </div>
             
             <div className="mt-4 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={refreshDeadzones}
+                className="w-full"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh Deadzones
+              </Button>
+              
               <Button
                 variant="destructive"
                 onClick={endLecture}

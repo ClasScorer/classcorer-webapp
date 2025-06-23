@@ -29,100 +29,249 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
-import { loadCourses, loadStudents, type Course, type Student } from "@/lib/data"
+import { prisma } from "@/lib/prisma"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
 
-// Get course data from CSV
+// Student type for leaderboard
+interface LeaderboardStudent {
+  id: string;
+  name: string;
+  avatar: string;
+  score: number;
+  level: number;
+  badges: string[];
+  progress: number;
+  trend: "up" | "down" | "stable";
+  streak: number;
+  recentAchievement: string;
+  course: string;
+  grade: string;
+  average: number;
+}
+
+// Get course data from database
 async function getCourses() {
-  const courses = await loadCourses();
-  const courseMap: Record<string, { id: string; name: string; description: string }> = {
-    all: {
-      id: "all",
-      name: "All Courses",
-      description: "Top performing students across all courses",
-    }
-  };
-
-  courses.forEach(course => {
-    courseMap[course.id] = {
-      id: course.id,
-      name: course.name,
-      description: `${course.code} - ${course.name}`,
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return {
+      all: {
+        id: "all",
+        name: "All Courses",
+        description: "Top performing students across all courses",
+      }
     };
-  });
+  }
 
-  return courseMap;
-}
+  try {
+    const courses = await prisma.course.findMany({
+      where: { professorId: session.user.id }
+    });
 
-// Get students by course
-async function getStudentsByCourse(courseId: string) {
-  const students = await loadStudents();
-  const courses = await loadCourses();
+    const courseMap: Record<string, { id: string; name: string; description: string }> = {
+      all: {
+        id: "all",
+        name: "All Courses",
+        description: "Top performing students across all courses",
+      }
+    };
 
-  if (courseId === "all") return students;
+    courses.forEach(course => {
+      courseMap[course.id] = {
+        id: course.id,
+        name: course.name,
+        description: `${course.code} - ${course.name}`,
+      };
+    });
 
-  const course = courses.find(c => c.id === courseId);
-  if (!course) return [];
-
-  return students.filter(student => student.course === course.name);
-}
-
-export async function generateMetadata({ params }: { params: { course: string } }): Promise<Metadata> {
-  const courses = await getCourses();
-  const course = courses[params.course];
-  if (!course) return {};
-
-  return {
-    title: `${course.name} Leaderboard`,
-    description: course.description,
-    openGraph: {
-      title: `${course.name} Leaderboard`,
-      description: course.description,
-      type: "website",
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: `${course.name} Leaderboard`,
-      description: course.description,
-    },
+    return courseMap;
+  } catch (error) {
+    console.error("Failed to load courses:", error);
+    return {
+      all: {
+        id: "all",
+        name: "All Courses",
+        description: "Top performing students across all courses",
+      }
+    };
   }
 }
 
-function TopThree({ students }: { students: typeof allStudents }) {
-  const [first, second, third] = students
+// Get students by course from database
+async function getStudentsByCourse(courseParam: string): Promise<LeaderboardStudent[]> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return [];
+  }
+
+  try {
+    let whereClause: any = {};
+    
+    if (courseParam !== "all") {
+      whereClause.courseId = courseParam;
+    }
+
+    // Get students with their course data
+    const students = await prisma.student.findMany({
+      where: {
+        course: {
+          professorId: session.user.id,
+          ...whereClause
+        }
+      },
+      include: {
+        course: true,
+        attendances: true,
+        submissions: {
+          include: {
+            assignment: true
+          }
+        },
+        actions: {
+          where: {
+            createdAt: {
+              gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // Last 7 days
+            }
+          }
+        }
+      },
+      orderBy: {
+        currentScore: 'desc'
+      }
+    });
+
+    // Transform to leaderboard format
+    const leaderboardStudents: LeaderboardStudent[] = students.map((student, index) => {
+      // Calculate attendance rate
+      const totalLectures = student.attendances.length;
+      const presentCount = student.attendances.filter(a => a.status === 'PRESENT').length;
+      const attendanceRate = totalLectures > 0 ? (presentCount / totalLectures) * 100 : 0;
+
+      // Calculate submission rate
+      const totalSubmissions = student.submissions.length;
+      const submissionRate = totalSubmissions > 0 ? 85 : 0; // Mock submission rate for now
+
+      // Calculate average score (using current score or a calculated average)
+      const average = student.currentScore || submissionRate;
+
+      // Determine badges based on performance
+      const badges = [];
+      if (average >= 90) badges.push("Top Performer");
+      if (attendanceRate >= 95) badges.push("Perfect Attendance");
+      if (totalSubmissions >= 5) badges.push("Assignment Star");
+      if (student.actions.length >= 3) badges.push("Active Participant");
+      if (badges.length === 0) badges.push("Learning");
+
+      // Calculate streak (days since last activity)
+      const lastAction = student.actions[0];
+      const daysSinceLastAction = lastAction 
+        ? Math.floor((new Date().getTime() - lastAction.createdAt.getTime()) / (1000 * 60 * 60 * 24))
+        : 0;
+      const streak = Math.max(0, 7 - daysSinceLastAction);
+
+      // Determine trend
+      const trend = average >= 80 ? "up" : average >= 60 ? "stable" : "down";
+
+      // Calculate progress to next level (based on score)
+      const progress = Math.min(100, (average / 100) * 100);
+
+      // Calculate level
+      const level = Math.floor(average / 10) + 1;
+
+      // Recent achievement
+      const recentAchievement = lastAction 
+        ? `${lastAction.actionType.toLowerCase()} action` 
+        : totalSubmissions > 0 
+          ? "Recent submission" 
+          : "Joined course";
+
+      // Grade calculation
+      let grade = "F";
+      if (average >= 97) grade = "A+";
+      else if (average >= 93) grade = "A";
+      else if (average >= 90) grade = "A-";
+      else if (average >= 87) grade = "B+";
+      else if (average >= 83) grade = "B";
+      else if (average >= 80) grade = "B-";
+      else if (average >= 77) grade = "C+";
+      else if (average >= 73) grade = "C";
+      else if (average >= 70) grade = "C-";
+      else if (average >= 67) grade = "D+";
+      else if (average >= 63) grade = "D";
+      else if (average >= 60) grade = "D-";
+
+      return {
+        id: student.id,
+        name: student.name,
+        avatar: "", // Default empty avatar
+        score: Math.round(average * 10), // Scale up score for display
+        level,
+        badges,
+        progress,
+        trend,
+        streak,
+        recentAchievement,
+        course: student.course.code,
+        grade,
+        average
+      };
+    });
+
+    return leaderboardStudents;
+  } catch (error) {
+    console.error("Failed to load students:", error);
+    return [];
+  }
+}
+
+function TopThree({ students }: { students: LeaderboardStudent[] }) {
+  const [first, second, third] = students.slice(0, 3);
   
+  if (!first) {
+    return (
+      <div className="text-center py-8">
+        <Trophy className="h-12 w-12 mx-auto text-gray-400" />
+        <p className="mt-4 text-gray-500">No students found</p>
+        <p className="text-sm text-gray-400">Add students to your courses to see the leaderboard</p>
+      </div>
+    );
+  }
+
   return (
     <div className="relative mb-8 grid grid-cols-3 gap-4 md:gap-8">
       {/* Second Place */}
-      <div className="order-1 flex flex-col items-center md:mt-12 transition-transform hover:scale-105">
-        <div className="mb-4 rounded-full bg-gradient-to-br from-[#C0C0C0] to-[#A0A0A0] p-3 shadow-lg animate-bounce-slow">
-          <Medal className="h-8 w-8 text-white drop-shadow animate-pulse" />
-        </div>
-        <div className="relative flex flex-col items-center group">
-          <div className="rounded-xl bg-gradient-to-br from-[#C0C0C0]/20 via-[#D0D0D0]/20 to-[#C0C0C0]/10 p-4 backdrop-blur-sm border border-[#C0C0C0]/20 group-hover:border-[#C0C0C0]/40 transition-all">
-            <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#C0C0C0] shadow-lg">
-                <span className="text-xl font-black text-white group-hover:scale-110 transition-transform">2</span>
+      {second && (
+        <div className="order-1 flex flex-col items-center md:mt-12 transition-transform hover:scale-105">
+          <div className="mb-4 rounded-full bg-gradient-to-br from-[#C0C0C0] to-[#A0A0A0] p-3 shadow-lg animate-bounce-slow">
+            <Medal className="h-8 w-8 text-white drop-shadow animate-pulse" />
+          </div>
+          <div className="relative flex flex-col items-center group">
+            <div className="rounded-xl bg-gradient-to-br from-[#C0C0C0]/20 via-[#D0D0D0]/20 to-[#C0C0C0]/10 p-4 backdrop-blur-sm border border-[#C0C0C0]/20 group-hover:border-[#C0C0C0]/40 transition-all">
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#C0C0C0] shadow-lg">
+                  <span className="text-xl font-black text-white group-hover:scale-110 transition-transform">2</span>
+                </div>
               </div>
-            </div>
-            <Avatar className="h-24 w-24 border-4 border-[#C0C0C0] shadow-xl ring-4 ring-[#C0C0C0]/20 group-hover:ring-[#C0C0C0]/40 transition-all">
-              <AvatarImage src={second.avatar} alt={second.name} />
-              <AvatarFallback>{second.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
-            </Avatar>
-            <div className="mt-4 text-center">
-              <div className="font-bold">{second.name}</div>
-              <div className="text-sm font-medium bg-gradient-to-r from-[#C0C0C0] to-[#A0A0A0] bg-clip-text text-transparent">{second.score} pts</div>
-              <div className="mt-2 flex flex-wrap justify-center gap-1">
-                {second.badges.map((badge) => (
-                  <Badge key={badge} variant="secondary" className="text-[10px] bg-[#C0C0C0]/10 hover:bg-[#C0C0C0]/20 transition-colors">
-                    {badge}
-                  </Badge>
-                ))}
+              <Avatar className="h-24 w-24 border-4 border-[#C0C0C0] shadow-xl ring-4 ring-[#C0C0C0]/20 group-hover:ring-[#C0C0C0]/40 transition-all">
+                <AvatarImage src={second.avatar} alt={second.name} />
+                <AvatarFallback>{second.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+              </Avatar>
+              <div className="mt-4 text-center">
+                <div className="font-bold">{second.name}</div>
+                <div className="text-sm font-medium bg-gradient-to-r from-[#C0C0C0] to-[#A0A0A0] bg-clip-text text-transparent">{second.score} pts</div>
+                <div className="mt-2 flex flex-wrap justify-center gap-1">
+                  {second.badges.map((badge) => (
+                    <Badge key={badge} variant="secondary" className="text-[10px] bg-[#C0C0C0]/10 hover:bg-[#C0C0C0]/20 transition-colors">
+                      {badge}
+                    </Badge>
+                  ))}
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground">Level {second.level}</div>
               </div>
-              <div className="mt-2 text-xs text-muted-foreground">Level {second.level}</div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* First Place */}
       <div className="order-2 flex flex-col items-center transition-transform hover:scale-105">
@@ -168,44 +317,56 @@ function TopThree({ students }: { students: typeof allStudents }) {
       </div>
 
       {/* Third Place */}
-      <div className="order-3 flex flex-col items-center md:mt-16 transition-transform hover:scale-105">
-        <div className="mb-4 rounded-full bg-gradient-to-br from-[#CD7F32] to-[#A05A32] p-3 shadow-lg animate-bounce-slow">
-          <Award className="h-8 w-8 text-white drop-shadow animate-pulse" />
-        </div>
-        <div className="relative flex flex-col items-center group">
-          <div className="rounded-xl bg-gradient-to-br from-[#CD7F32]/20 via-[#B87333]/20 to-[#CD7F32]/10 p-4 backdrop-blur-sm border border-[#CD7F32]/20 group-hover:border-[#CD7F32]/40 transition-all">
-            <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#CD7F32] shadow-lg">
-                <span className="text-xl font-black text-white group-hover:scale-110 transition-transform">3</span>
+      {third && (
+        <div className="order-3 flex flex-col items-center md:mt-16 transition-transform hover:scale-105">
+          <div className="mb-4 rounded-full bg-gradient-to-br from-[#CD7F32] to-[#A05A32] p-3 shadow-lg animate-bounce-slow">
+            <Award className="h-8 w-8 text-white drop-shadow animate-pulse" />
+          </div>
+          <div className="relative flex flex-col items-center group">
+            <div className="rounded-xl bg-gradient-to-br from-[#CD7F32]/20 via-[#B87333]/20 to-[#CD7F32]/10 p-4 backdrop-blur-sm border border-[#CD7F32]/20 group-hover:border-[#CD7F32]/40 transition-all">
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#CD7F32] shadow-lg">
+                  <span className="text-xl font-black text-white group-hover:scale-110 transition-transform">3</span>
+                </div>
               </div>
-            </div>
-            <Avatar className="h-24 w-24 border-4 border-[#CD7F32] shadow-xl ring-4 ring-[#CD7F32]/20 group-hover:ring-[#CD7F32]/40 transition-all">
-              <AvatarImage src={third.avatar} alt={third.name} />
-              <AvatarFallback>{third.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
-            </Avatar>
-            <div className="mt-4 text-center">
-              <div className="font-bold">{third.name}</div>
-              <div className="text-sm font-medium bg-gradient-to-r from-[#CD7F32] to-[#A05A32] bg-clip-text text-transparent">{third.score} pts</div>
-              <div className="mt-2 flex flex-wrap justify-center gap-1">
-                {third.badges.map((badge) => (
-                  <Badge key={badge} variant="secondary" className="text-[10px] bg-[#CD7F32]/10 hover:bg-[#CD7F32]/20 transition-colors">
-                    {badge}
-                  </Badge>
-                ))}
+              <Avatar className="h-24 w-24 border-4 border-[#CD7F32] shadow-xl ring-4 ring-[#CD7F32]/20 group-hover:ring-[#CD7F32]/40 transition-all">
+                <AvatarImage src={third.avatar} alt={third.name} />
+                <AvatarFallback>{third.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+              </Avatar>
+              <div className="mt-4 text-center">
+                <div className="font-bold">{third.name}</div>
+                <div className="text-sm font-medium bg-gradient-to-r from-[#CD7F32] to-[#A05A32] bg-clip-text text-transparent">{third.score} pts</div>
+                <div className="mt-2 flex flex-wrap justify-center gap-1">
+                  {third.badges.map((badge) => (
+                    <Badge key={badge} variant="secondary" className="text-[10px] bg-[#CD7F32]/10 hover:bg-[#CD7F32]/20 transition-colors">
+                      {badge}
+                    </Badge>
+                  ))}
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground">Level {third.level}</div>
               </div>
-              <div className="mt-2 text-xs text-muted-foreground">Level {third.level}</div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
-  )
+  );
 }
 
-function LeaderboardList({ students }: { students: typeof allStudents }) {
+function LeaderboardList({ students }: { students: LeaderboardStudent[] }) {
+  const remainingStudents = students.slice(3);
+  
+  if (remainingStudents.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-gray-500">No additional students to display</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      {students.map((student, index) => (
+      {remainingStudents.map((student, index) => (
         <Card key={student.id} className="overflow-hidden group hover:shadow-lg transition-all">
           <CardContent className="flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-muted to-muted/80 font-semibold group-hover:scale-110 transition-transform">
@@ -260,7 +421,7 @@ function LeaderboardList({ students }: { students: typeof allStudents }) {
 
       <div className="flex items-center justify-between">
         <div className="text-sm text-muted-foreground">
-          Showing {students.length} of {allStudents.length} students
+          Showing {Math.min(remainingStudents.length, 10)} of {remainingStudents.length} students
         </div>
         <Pagination>
           <PaginationContent>
@@ -271,22 +432,13 @@ function LeaderboardList({ students }: { students: typeof allStudents }) {
               <PaginationLink href="#" isActive className="hover:scale-105 transition-transform">1</PaginationLink>
             </PaginationItem>
             <PaginationItem>
-              <PaginationLink href="#" className="hover:scale-105 transition-transform">2</PaginationLink>
-            </PaginationItem>
-            <PaginationItem>
-              <PaginationLink href="#" className="hover:scale-105 transition-transform">3</PaginationLink>
-            </PaginationItem>
-            <PaginationItem>
-              <PaginationEllipsis />
-            </PaginationItem>
-            <PaginationItem>
               <PaginationNext href="#" className="hover:scale-105 transition-transform" />
             </PaginationItem>
           </PaginationContent>
         </Pagination>
       </div>
     </div>
-  )
+  );
 }
 
 export default async function CourseLeaderboardPage({ params }: { params: { course: string } }) {
@@ -346,8 +498,8 @@ export default async function CourseLeaderboardPage({ params }: { params: { cour
 
           <Card className="border-primary/20">
             <CardContent className="pt-6">
-              <TopThree students={students.slice(0, 3)} />
-              <LeaderboardList students={students.slice(3)} />
+              <TopThree students={students} />
+              <LeaderboardList students={students} />
             </CardContent>
           </Card>
 
@@ -362,5 +514,5 @@ export default async function CourseLeaderboardPage({ params }: { params: { cour
         </div>
       </div>
     </div>
-  )
+  );
 } 

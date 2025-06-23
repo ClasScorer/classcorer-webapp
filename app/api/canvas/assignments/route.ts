@@ -1,14 +1,32 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { fetchCanvasCourses, fetchCanvasAssignments } from '@/lib/canvas';
+import { prisma } from '@/lib/prisma';
 
 export async function GET() {
   try {
-    // Fetch all courses from Canvas LMS
-    const canvasCourses = await fetchCanvasCourses();
+    const session = await getServerSession(authOptions);
+    
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Get user
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email }
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Fetch all courses from Canvas LMS using user's credentials
+    const canvasCourses = await fetchCanvasCourses(user.id);
     
     // Fetch assignments for each course
     const assignmentsPromises = canvasCourses.map(async (course) => {
-      const assignments = await fetchCanvasAssignments(course.id);
+      const assignments = await fetchCanvasAssignments(course.id, user.id);
       return assignments.map(assignment => ({
         id: assignment.id.toString(),
         title: assignment.name,
